@@ -11,12 +11,15 @@ import (
 	"time"
 
 	"quickwork-openai/internal/config"
+	"quickwork-openai/internal/errlog"
 	"quickwork-openai/internal/oauth"
 	"quickwork-openai/internal/store"
 )
 
 // ErrNoAccounts means the database has no enabled account.
-var ErrNoAccounts = errors.New("no accounts configured; run `quickproxy login`")
+var ErrNoAccounts = errlog.At("no enabled accounts", errors.New("no accounts configured; run `quickproxy login`"))
+
+var errNoAccessToken = errlog.At("missing access token", errors.New("account has no access token"))
 
 // Manager rotates over enabled accounts and refreshes tokens on demand.
 type Manager struct {
@@ -50,7 +53,7 @@ func (m *Manager) lockFor(id int64) *sync.Mutex {
 func (m *Manager) Next(ctx context.Context) (*store.Account, error) {
 	list, err := m.store.Enabled(ctx)
 	if err != nil {
-		return nil, err
+		return nil, errlog.At("list enabled accounts", err)
 	}
 	if len(list) == 0 {
 		return nil, ErrNoAccounts
@@ -64,22 +67,22 @@ func (m *Manager) Next(ctx context.Context) (*store.Account, error) {
 		a := &list[(start+i)%len(list)]
 		usable, err := m.ensureFresh(ctx, a)
 		if err != nil {
-			_ = m.store.SetError(ctx, a.ID, err.Error())
+			m.recordFailure(ctx, a.ID, "select_account", err)
 			errs = append(errs, fmt.Sprintf("account %d (%s): %v", a.ID, a.Email, err))
 			continue
 		}
 		if err := m.store.MarkUsed(ctx, usable.ID); err != nil {
-			return nil, err
+			return nil, errlog.At("mark account used", err)
 		}
 		return usable, nil
 	}
-	return nil, fmt.Errorf("no usable account: %s", strings.Join(errs, "; "))
+	return nil, errlog.At("no usable account after rotation", fmt.Errorf("no usable account: %s", strings.Join(errs, "; ")))
 }
 
 func (m *Manager) ensureFresh(ctx context.Context, a *store.Account) (*store.Account, error) {
 	if !a.Expiring(time.Now(), m.cfg.RefreshBefore.Duration()) {
 		if a.JWT() == "" {
-			return nil, errors.New("account has no access token")
+			return nil, errNoAccessToken
 		}
 		return a, nil
 	}
@@ -94,7 +97,7 @@ func (m *Manager) ensureFresh(ctx context.Context, a *store.Account) (*store.Acc
 	}
 	if !latest.Expiring(time.Now(), m.cfg.RefreshBefore.Duration()) {
 		if latest.JWT() == "" {
-			return nil, errors.New("account has no access token")
+			return nil, errNoAccessToken
 		}
 		return latest, nil
 	}
@@ -108,7 +111,7 @@ func (m *Manager) refreshLocked(ctx context.Context, a *store.Account) (*store.A
 		return nil, err
 	}
 	if err := m.store.Update(ctx, refreshed); err != nil {
-		return nil, err
+		return nil, errlog.At("save refreshed account", err)
 	}
 	return refreshed, nil
 }
@@ -117,17 +120,19 @@ func (m *Manager) refreshLocked(ctx context.Context, a *store.Account) (*store.A
 func (m *Manager) RefreshOne(ctx context.Context, id int64) (*store.Account, error) {
 	a, err := m.store.Get(ctx, id)
 	if err != nil {
+		errlog.From(ctx).ErrorContext(ctx, "Account lookup failed", "operation", "refresh_account", "account_id", id, "reason", errlog.Cause(err))
 		return nil, err
 	}
 	lock := m.lockFor(id)
 	lock.Lock()
 	defer lock.Unlock()
 	if a, err = m.store.Get(ctx, id); err != nil {
+		errlog.From(ctx).ErrorContext(ctx, "Account lookup failed", "operation", "refresh_account", "account_id", id, "reason", errlog.Cause(err))
 		return nil, err
 	}
 	refreshed, err := m.refreshLocked(ctx, a)
 	if err != nil {
-		_ = m.store.SetError(ctx, id, err.Error())
+		m.recordFailure(ctx, id, "refresh_account", err)
 		return nil, err
 	}
 	return refreshed, nil
@@ -153,7 +158,7 @@ func (m *Manager) RefreshAll(ctx context.Context) ([]RefreshResult, error) {
 		a := &list[i]
 		if strings.TrimSpace(a.RefreshToken) == "" {
 			results = append(results, RefreshResult{Account: a, Err: oauth.ErrNoRefreshToken})
-			_ = m.store.SetError(ctx, a.ID, oauth.ErrNoRefreshToken.Error())
+			m.recordFailure(ctx, a.ID, "refresh_account", oauth.ErrNoRefreshToken)
 			continue
 		}
 		refreshed, err := m.RefreshOne(ctx, a.ID)
@@ -170,7 +175,21 @@ func (m *Manager) ReportFailure(ctx context.Context, id int64, err error) {
 	if err == nil {
 		return
 	}
-	_ = m.store.SetError(ctx, id, err.Error())
+	m.recordFailure(ctx, id, "chat_attempt", err)
+}
+
+func (m *Manager) recordFailure(ctx context.Context, id int64, operation string, err error) {
+	log := errlog.From(ctx).With("account_id", id)
+	reason := errlog.Cause(err)
+	log.ErrorContext(ctx, "Account operation failed", "operation", operation, "reason", reason)
+	if writeErr := m.store.SetError(ctx, id, reason); writeErr != nil {
+		log.ErrorContext(ctx, "Saving account error failed", "reason", errlog.Cause(writeErr))
+	}
+}
+
+// AddMonthlyUsage persists the time spent by one upstream chat attempt.
+func (m *Manager) AddMonthlyUsage(ctx context.Context, id int64, endedAt time.Time, duration time.Duration, reported bool) error {
+	return m.store.AddMonthlyUsage(ctx, id, endedAt, duration, reported)
 }
 
 // EnabledCount returns the number of accounts in rotation.

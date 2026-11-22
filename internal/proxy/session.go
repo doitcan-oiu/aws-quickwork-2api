@@ -1,10 +1,11 @@
 package proxy
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 
 	"quickwork-openai/internal/config"
+	"quickwork-openai/internal/errlog"
 	"quickwork-openai/internal/store"
 )
 
@@ -48,10 +49,10 @@ func SessionFromAccount(a *store.Account, cfg *config.Config) *Session {
 
 func (s *Session) validate() error {
 	if strings.TrimSpace(s.JWT) == "" {
-		return fmt.Errorf("account has no jwt/id_token")
+		return errlog.At("missing account token", errors.New("account has no jwt/id_token"))
 	}
 	if strings.TrimSpace(s.WSHost) == "" {
-		return fmt.Errorf("account has no ws_host")
+		return errlog.At("missing account WebSocket host", errors.New("account has no ws_host"))
 	}
 	return nil
 }

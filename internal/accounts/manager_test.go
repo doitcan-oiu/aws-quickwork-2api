@@ -1,7 +1,10 @@
 package accounts
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -10,6 +13,7 @@ import (
 	"time"
 
 	"quickwork-openai/internal/config"
+	"quickwork-openai/internal/errlog"
 	"quickwork-openai/internal/store"
 )
 
@@ -22,6 +26,53 @@ func testManager(t *testing.T) (*Manager, *store.Store) {
 	t.Cleanup(func() { _ = st.Close() })
 	cfg := config.Default()
 	return New(st, &cfg), st
+}
+
+func TestRefreshAllLogsIndividualFailures(t *testing.T) {
+	mgr, st := testManager(t)
+	var logs bytes.Buffer
+	ctx := errlog.WithLogger(t.Context(), slog.New(slog.NewJSONHandler(&logs, nil)))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/denied":
+			http.Error(w, "private-token-error", http.StatusUnauthorized)
+		case "/token":
+			_, _ = w.Write([]byte(`{"access_token":"private-access"}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	for _, name := range []string{"denied", "missing", "token"} {
+		a := validAccount(name + "@private.example")
+		a.Provider, a.TenantURL, a.TokenEndpoint = "enterprise", srv.URL, srv.URL+"/"+name
+		if name != "missing" {
+			a.RefreshToken = "private-refresh"
+		}
+		if err := st.Save(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	results, err := mgr.RefreshAll(ctx)
+	if err != nil || len(results) != 3 {
+		t.Fatalf("refresh results: %d, %v", len(results), err)
+	}
+	if got := strings.Count(logs.String(), "\n"); got != 2 {
+		t.Fatalf("logged %d failures, want 2: %s", got, &logs)
+	}
+	for _, res := range results {
+		if res.Err != nil && !strings.Contains(logs.String(), fmt.Sprintf(`"account_id":%d`, res.Account.ID)) {
+			t.Errorf("missing failed account %d in %s", res.Account.ID, &logs)
+		}
+	}
+	for _, want := range []string{"upstream HTTP 401", "missing refresh_token", "refresh_account"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("missing %q in %s", want, &logs)
+		}
+	}
+	if strings.Contains(logs.String(), "private") || strings.Contains(logs.String(), srv.URL) {
+		t.Fatalf("sensitive data in logs: %s", &logs)
+	}
 }
 
 func validAccount(email string) *store.Account {

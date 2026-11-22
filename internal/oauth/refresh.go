@@ -7,11 +7,12 @@ import (
 	"net/url"
 	"strings"
 
+	"quickwork-openai/internal/errlog"
 	"quickwork-openai/internal/store"
 )
 
 // ErrNoRefreshToken means the account must be logged in again.
-var ErrNoRefreshToken = errors.New("no refresh_token stored; run login again")
+var ErrNoRefreshToken = errlog.At("missing refresh_token", errors.New("no refresh_token stored; run login again"))
 
 // Refresh renews an account's tokens and returns an updated copy. The caller
 // persists it with Store.Update.
@@ -32,7 +33,7 @@ func Refresh(ctx context.Context, a *store.Account) (*store.Account, error) {
 	switch {
 	case isEnterpriseDiscovery(provider):
 		if out.TokenEndpoint == "" {
-			return nil, errors.New("account has no token_endpoint; run login again")
+			return nil, errlog.At("missing token endpoint", errors.New("account has no token_endpoint; run login again"))
 		}
 		form := url.Values{
 			"grant_type":    {"refresh_token"},
@@ -63,11 +64,11 @@ func Refresh(ctx context.Context, a *store.Account) (*store.Account, error) {
 		}, nil)
 	}
 	if err != nil {
-		return nil, err
+		return nil, errlog.At("request refreshed token", err)
 	}
 	t := tokensFromMap(raw)
 	if t.AccessToken == "" {
-		return nil, errors.New("refresh returned no access_token")
+		return nil, errlog.At("missing refreshed access token", errors.New("refresh returned no access_token"))
 	}
 	if t.RefreshToken == "" {
 		t.RefreshToken = out.RefreshToken
@@ -79,10 +80,10 @@ func Refresh(ctx context.Context, a *store.Account) (*store.Account, error) {
 	}
 	info, err := fetchUserInfo(ctx, provider, out.BuildStage, d, out.TenantURL, t.AccessToken)
 	if err != nil {
-		return nil, fmt.Errorf("user info after refresh: %w", err)
+		return nil, errlog.At("fetch refreshed user info", fmt.Errorf("user info after refresh: %w", err))
 	}
 	if err := applySession(&out, t, info); err != nil {
-		return nil, err
+		return nil, errlog.At("prepare refreshed session", err)
 	}
 	return &out, nil
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"quickwork-openai/internal/config"
+	"quickwork-openai/internal/errlog"
 )
 
 const (
@@ -77,6 +78,53 @@ type ChatResult struct {
 	Text      string
 	ToolCalls []ToolCallState
 	Usage     Usage
+	timing    turnTiming
+}
+
+type turnTiming struct {
+	endedAt  time.Time
+	duration time.Duration
+	reported bool
+}
+
+// Each turn_usage describes a step. If any step lacks a usable duration,
+// estimate the whole turn so partially reported and elapsed time never overlap.
+type turnClock struct {
+	startedAt   time.Time
+	progressAt  time.Time
+	completedAt time.Time
+	reported    time.Duration
+	sawUsage    bool
+	incomplete  bool
+}
+
+func (c *turnClock) addUsage(raw json.RawMessage, hasTokens bool, at time.Time) {
+	var ms *int64
+	if json.Unmarshal(raw, &ms) != nil || ms == nil || *ms < 0 || *ms > (math.MaxInt64-int64(c.reported))/int64(time.Millisecond) {
+		c.incomplete = true
+		if hasTokens {
+			c.progressAt = at
+		}
+		return
+	}
+	c.progressAt = at
+	c.sawUsage = true
+	c.reported += time.Duration(*ms) * time.Millisecond
+}
+
+func (c *turnClock) timing() turnTiming {
+	if c.progressAt.IsZero() {
+		return turnTiming{}
+	}
+	end := c.completedAt
+	if end.IsZero() {
+		// An interrupted connection may sit idle until the read deadline.
+		end = c.progressAt
+	}
+	if c.sawUsage && !c.incomplete {
+		return turnTiming{endedAt: end, duration: c.reported, reported: true}
+	}
+	return turnTiming{endedAt: end, duration: end.Sub(c.startedAt)}
 }
 
 // Chat sends one prompt through the QuickWork chat bidi WebSocket. Text
@@ -98,7 +146,7 @@ func (u *Upstream) Chat(ctx context.Context, sess *Session, in ChatInput, onEven
 
 	wsURL, headers, gateway, err := u.dialInfo(sess)
 	if err != nil {
-		return ChatResult{}, err
+		return ChatResult{}, errlog.At("prepare WebSocket connection", err)
 	}
 
 	dialer := *websocket.DefaultDialer
@@ -108,8 +156,9 @@ func (u *Upstream) Chat(ctx context.Context, sess *Session, in ChatInput, onEven
 		detail := ""
 		if resp != nil {
 			detail = fmt.Sprintf(" HTTP %d", resp.StatusCode)
+			err = errlog.WithHTTPStatus(err, resp.StatusCode)
 		}
-		return ChatResult{}, fmt.Errorf("upstream WebSocket dial failed%s: %w", detail, err)
+		return ChatResult{}, errlog.At("open WebSocket", fmt.Errorf("upstream WebSocket dial failed%s: %w", detail, err))
 	}
 	defer conn.Close()
 
@@ -160,10 +209,8 @@ func (u *Upstream) Chat(ctx context.Context, sess *Session, in ChatInput, onEven
 			}
 		}
 	}()
-	go func() {
-		<-ctx.Done()
-		_ = conn.Close()
-	}()
+	stopCancel := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stopCancel()
 
 	// Handshake. The AIDP and Gateway paths use different session_connect shapes.
 	if gateway {
@@ -218,7 +265,7 @@ func (u *Upstream) Chat(ctx context.Context, sess *Session, in ChatInput, onEven
 		payload["thinking_effort"] = u.cfg.ThinkingEffort
 	}
 	if err := send(map[string]any{"type": "user_message", "payload": payload}); err != nil {
-		return ChatResult{}, fmt.Errorf("send user_message: %w", err)
+		return ChatResult{}, errlog.At("send user message", fmt.Errorf("send user_message: %w", err))
 	}
 
 	result, err := u.readEvents(ctx, conn, gateway, onEvent)
@@ -302,6 +349,8 @@ func (u *Upstream) dialInfo(sess *Session) (wsURL string, headers http.Header, g
 
 func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway bool, onEvent EventFunc) (ChatResult, error) {
 	var result ChatResult
+	clock := turnClock{startedAt: time.Now()}
+	var receivedAt time.Time
 	var text strings.Builder
 	sawMessageComplete := false
 	var completeDeadline time.Time
@@ -312,6 +361,8 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 	partialArgs := make(map[string]string)
 
 	getTool := func(id, name string) *ToolCallState {
+		clock.completedAt = time.Time{}
+		clock.progressAt = receivedAt
 		id = strings.TrimSpace(id)
 		if id == "" {
 			id = "call_" + strings.ReplaceAll(uuid(), "-", "")
@@ -349,6 +400,7 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 		return emitTool(tc)
 	}
 	finish := func() (ChatResult, error) {
+		result.timing = clock.timing()
 		result.Text = text.String()
 		result.ToolCalls = result.ToolCalls[:0]
 		for _, id := range toolOrder {
@@ -381,6 +433,7 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 		"stream_ended":   true,
 		"chat_complete":  true,
 	}
+	var loggedBadFrame bool
 	for {
 		select {
 		case <-ctx.Done():
@@ -404,11 +457,15 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 				return res, emitErr
 			}
 			if text.Len() > 0 || len(toolOrder) > 0 {
+				if clock.completedAt.IsZero() && !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+					errlog.From(ctx).ErrorContext(ctx, "WebSocket ended before turn completion", "reason", errlog.Cause(err))
+				}
 				return res, nil
 			}
-			return res, fmt.Errorf("upstream WebSocket read: %w", err)
+			return res, errlog.At("read WebSocket", fmt.Errorf("upstream WebSocket read: %w", err))
 		}
 
+		receivedAt = time.Now()
 		var jsonStr string
 		if msgType == websocket.TextMessage {
 			jsonStr = string(data)
@@ -419,7 +476,10 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 				jsonStr, err = aidpDecode(data)
 			}
 			if err != nil {
-				log.Printf("upstream frame decode: %v", err)
+				if !loggedBadFrame {
+					errlog.From(ctx).ErrorContext(ctx, "Invalid upstream event frame", "reason", errlog.Cause(err))
+					loggedBadFrame = true
+				}
 				continue
 			}
 		}
@@ -432,6 +492,10 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 			ErrorCode string          `json:"error_code"`
 		}
 		if err := json.Unmarshal([]byte(jsonStr), &env); err != nil {
+			if !loggedBadFrame {
+				errlog.From(ctx).ErrorContext(ctx, "Invalid upstream event JSON", "reason", "malformed event")
+				loggedBadFrame = true
+			}
 			continue
 		}
 		switch env.Type {
@@ -440,6 +504,8 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 			if delta == "" {
 				continue
 			}
+			clock.completedAt = time.Time{}
+			clock.progressAt = receivedAt
 			text.WriteString(delta)
 			if onEvent != nil {
 				if err := onEvent(StreamEvent{Type: "text", Text: delta}); err != nil {
@@ -448,12 +514,14 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 				}
 			}
 		case "text_complete":
+			clock.completedAt = receivedAt
 			if text.Len() == 0 {
 				var p struct {
 					Text string `json:"text"`
 				}
 				_ = json.Unmarshal(env.Payload, &p)
 				if p.Text != "" {
+					clock.progressAt = receivedAt
 					text.WriteString(p.Text)
 					if onEvent != nil {
 						if err := onEvent(StreamEvent{Type: "text", Text: p.Text}); err != nil {
@@ -466,13 +534,16 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 			sawMessageComplete = true
 		case "turn_usage":
 			var p struct {
-				InputTokens      int `json:"input_tokens"`
-				OutputTokens     int `json:"output_tokens"`
-				TotalTokens      int `json:"total_tokens"`
-				CacheReadTokens  int `json:"cache_read_tokens"`
-				CacheWriteTokens int `json:"cache_write_tokens"`
+				InputTokens      int             `json:"input_tokens"`
+				OutputTokens     int             `json:"output_tokens"`
+				TotalTokens      int             `json:"total_tokens"`
+				CacheReadTokens  int             `json:"cache_read_tokens"`
+				CacheWriteTokens int             `json:"cache_write_tokens"`
+				DurationMS       json.RawMessage `json:"duration_ms"`
 			}
 			if err := json.Unmarshal(env.Payload, &p); err == nil {
+				hasTokens := p.InputTokens > 0 || p.OutputTokens > 0 || p.TotalTokens > 0 || p.CacheReadTokens > 0 || p.CacheWriteTokens > 0
+				clock.addUsage(p.DurationMS, hasTokens, receivedAt)
 				result.Usage.add(Usage{
 					PromptTokens:     p.InputTokens,
 					CompletionTokens: p.OutputTokens,
@@ -536,6 +607,8 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 				delta = p.Progress.InputDelta
 			}
 			if id != "" && delta != "" {
+				clock.completedAt = time.Time{}
+				clock.progressAt = receivedAt
 				partialArgs[id] += delta
 			}
 		case "tool_result":
@@ -692,14 +765,22 @@ func (u *Upstream) readEvents(ctx context.Context, conn *websocket.Conn, gateway
 			}
 			if p.ContinuationExpected {
 				completeDeadline = time.Time{}
+				clock.completedAt = time.Time{}
 			} else {
-				completeDeadline = time.Now().Add(5 * time.Second)
+				if clock.completedAt.IsZero() {
+					clock.completedAt = receivedAt
+				}
+				completeDeadline = receivedAt.Add(5 * time.Second)
 			}
 		case "error", "session_error", "stream_error", "turn_failed":
 			res, _ := finish()
-			return res, fmt.Errorf("upstream %s: %s", env.Type, errorText(env.Payload, env.Error, env.ErrorCode))
+			// Only the event types enumerated above are safe to use as labels.
+			return res, errlog.At("upstream "+env.Type, fmt.Errorf("upstream %s: %s", env.Type, errorText(env.Payload, env.Error, env.ErrorCode)))
 		default:
 			if terminal[env.Type] {
+				if clock.completedAt.IsZero() && env.Type != "turn_aborted" {
+					clock.completedAt = receivedAt
+				}
 				return finish()
 			}
 			if env.Type == "ping" {

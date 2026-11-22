@@ -5,7 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,10 +17,13 @@ import (
 	"time"
 
 	"quickwork-openai/internal/accounts"
+	"quickwork-openai/internal/admin"
 	"quickwork-openai/internal/config"
+	"quickwork-openai/internal/errlog"
 	"quickwork-openai/internal/oauth"
 	"quickwork-openai/internal/proxy"
 	"quickwork-openai/internal/store"
+	"quickwork-openai/web"
 )
 
 func main() {
@@ -57,7 +62,7 @@ func usage() {
 	fmt.Fprint(os.Stderr, `quickwork-openai - Amazon Quick to OpenAI-compatible API
 
 Usage:
-  quickproxy serve    [-config config.json]
+  quickproxy serve    [-config config.json] [-addr HOST:PORT]
   quickproxy login    [-config config.json] [-provider social|enterprise|gateway|social_gateway]
                       [-stage prod|beta|integ|dev] [-region REGION] [-port 18080]
                       [-timeout 1h] [-open] [-manual]
@@ -66,6 +71,7 @@ Usage:
   quickproxy logout   [-config config.json] (-all | -account ID)
 
 Running without a subcommand is equivalent to "serve".
+Open /admin/ on the service address to manage accounts in a browser.
 
 config.json is created with defaults on first use. Accounts are stored in the
 SQLite database named by "database" in config.json. When multiple accounts are
@@ -73,52 +79,80 @@ present, requests rotate through them round-robin.
 `)
 }
 
-func loadConfig(path string) (*config.Config, error) {
-	return config.Load(path)
+type commandRuntime struct {
+	cfg    *config.Config
+	store  *store.Store
+	ctx    context.Context
+	output io.Closer
 }
 
-func openStore(cfg *config.Config) (*store.Store, error) {
+func openRuntime(path, command string) (*commandRuntime, error) {
+	cfg, err := config.Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("config: %w", err)
+	}
+	logger, output, err := errlog.Open(cfg.ErrorLog, os.Stderr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error log unavailable:", err)
+		logger, output, _ = errlog.Open("", os.Stderr)
+	}
+	logger = logger.With("command", command)
 	st, err := store.Open(cfg.Database)
 	if err != nil {
+		logger.Error("open account database", "cause", errlog.Cause(err))
+		output.Close()
 		return nil, fmt.Errorf("open database %s: %w", cfg.Database, err)
 	}
-	return st, nil
+	return &commandRuntime{cfg, st, errlog.WithLogger(context.Background(), logger), output}, nil
+}
+
+func (app *commandRuntime) close() {
+	if err := app.store.Close(); err != nil {
+		errlog.From(app.ctx).Error("close account database", "cause", errlog.Cause(err))
+	}
+	app.output.Close()
 }
 
 func serve(args []string) int {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "config.json", "path to config.json")
+	addr := fs.String("addr", "", "override the configured HTTP listen address")
 	_ = fs.Parse(args)
 
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "config:", err)
-		return 1
-	}
-	st, err := openStore(cfg)
+	app, err := openRuntime(*configPath, "serve")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer st.Close()
+	defer app.close()
+	cfg, st := app.cfg, app.store
 
 	mgr := accounts.New(st, cfg)
-	count, _ := mgr.EnabledCount(context.Background())
-	handler := proxy.NewServer(cfg, mgr).Handler()
+	count, err := mgr.EnabledCount(app.ctx)
+	if err != nil {
+		errlog.From(app.ctx).Error("count enabled accounts", "cause", errlog.Cause(err))
+		return 1
+	}
+	if *addr != "" {
+		cfg.Addr = *addr
+	}
+	handler := serviceHandler(cfg, st, mgr, os.Getenv("QUICKPROXY_ADMIN_TOKEN"))
 	server := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           handler,
+		BaseContext:       func(net.Listener) context.Context { return app.ctx },
 		ReadHeaderTimeout: 15 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
 
 	log.Printf("quickwork-openai listening on %s (config=%s db=%s accounts=%d auth=%v)",
 		cfg.Addr, cfg.Path, cfg.Database, count, len(cfg.APIKeys) > 0)
+	log.Print("management console: /admin/")
 	if count == 0 {
-		log.Printf("no accounts stored; run `quickproxy login` to add one")
+		log.Printf("no accounts stored; add an account in /admin/ or run `quickproxy login`")
 	}
 
-	stop, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	stop, cancel := signal.NotifyContext(app.ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	listenErr := make(chan error, 1)
 	go func() {
@@ -132,14 +166,28 @@ func serve(args []string) int {
 	log.Printf("shutting down")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
-	_ = server.Shutdown(shutdownCtx)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		errlog.From(app.ctx).Error("shut down HTTP server", "cause", errlog.Cause(err))
+		return 1
+	}
 	select {
 	case err := <-listenErr:
-		log.Printf("listen: %v", err)
+		errlog.From(app.ctx).Error("listen for HTTP requests", "address", cfg.Addr, "cause", errlog.Cause(err))
 		return 1
 	default:
 		return 0
 	}
+}
+
+func serviceHandler(cfg *config.Config, st *store.Store, mgr *accounts.Manager, adminToken string) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/admin/api/", admin.Protect(admin.NewAPI(cfg, st, mgr), adminToken))
+	mux.Handle("/admin/", web.Handler())
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusFound)
+	})
+	mux.Handle("/", proxy.NewServer(cfg, mgr).Handler())
+	return mux
 }
 
 func login(args []string) int {
@@ -154,17 +202,13 @@ func login(args []string) int {
 	manual := fs.Bool("manual", false, "paste browser callback URLs manually (for servers without a reachable localhost)")
 	_ = fs.Parse(args)
 
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "config:", err)
-		return 1
-	}
-	st, err := openStore(cfg)
+	app, err := openRuntime(*configPath, "login")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer st.Close()
+	defer app.close()
+	cfg, st := app.cfg, app.store
 
 	if *provider == "" {
 		*provider = cfg.OAuth.Provider
@@ -179,7 +223,7 @@ func login(args []string) int {
 		*timeout = cfg.OAuth.Timeout.Duration()
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(app.ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	logger := log.New(os.Stdout, "[login] ", 0)
 	opts := oauth.LoginOptions{
@@ -199,6 +243,7 @@ func login(args []string) int {
 		acct, err = oauth.Login(ctx, opts, st)
 	}
 	if err != nil {
+		errlog.From(ctx).Error("login failed", "cause", errlog.Cause(err))
 		fmt.Fprintln(os.Stderr, "[login] failed:", err)
 		return 1
 	}
@@ -211,21 +256,17 @@ func listAccounts(args []string) int {
 	configPath := fs.String("config", "config.json", "path to config.json")
 	_ = fs.Parse(args)
 
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "config:", err)
-		return 1
-	}
-	st, err := openStore(cfg)
+	app, err := openRuntime(*configPath, "accounts")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer st.Close()
+	defer app.close()
+	st := app.store
 
-	list, err := st.List(context.Background())
+	list, err := st.List(app.ctx)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "list accounts:", err)
+		errlog.From(app.ctx).Error("list accounts", "cause", errlog.Cause(err))
 		return 1
 	}
 	if len(list) == 0 {
@@ -260,20 +301,16 @@ func refreshAccounts(args []string) int {
 	accountID := fs.Int64("account", 0, "refresh only this account ID (default: all)")
 	_ = fs.Parse(args)
 
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "config:", err)
-		return 1
-	}
-	st, err := openStore(cfg)
+	app, err := openRuntime(*configPath, "refresh")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer st.Close()
+	defer app.close()
+	cfg, st := app.cfg, app.store
 
 	mgr := accounts.New(st, cfg)
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := signal.NotifyContext(app.ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
 	if *accountID > 0 {
@@ -288,7 +325,7 @@ func refreshAccounts(args []string) int {
 
 	results, err := mgr.RefreshAll(ctx)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "refresh:", err)
+		errlog.From(ctx).Error("refresh accounts", "cause", errlog.Cause(err))
 		return 1
 	}
 	if len(results) == 0 {
@@ -326,23 +363,19 @@ func logout(args []string) int {
 		fmt.Fprintln(os.Stderr, "logout requires -all or -account ID")
 		return 2
 	}
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "config:", err)
-		return 1
-	}
-	st, err := openStore(cfg)
+	app, err := openRuntime(*configPath, "logout")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer st.Close()
+	defer app.close()
+	st := app.store
 
-	ctx := context.Background()
+	ctx := app.ctx
 	if *all {
 		n, err := st.DeleteAll(ctx)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "logout:", err)
+			errlog.From(ctx).Error("remove accounts", "cause", errlog.Cause(err))
 			return 1
 		}
 		fmt.Printf("removed %d account(s)\n", n)
@@ -350,11 +383,11 @@ func logout(args []string) int {
 	}
 	ok, err := st.Delete(ctx, *accountID)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "logout:", err)
+		errlog.From(ctx).Error("remove accounts", "cause", errlog.Cause(err))
 		return 1
 	}
 	if !ok {
-		fmt.Fprintf(os.Stderr, "account %d not found\n", *accountID)
+		errlog.From(ctx).Error("remove account", "account_id", *accountID, "cause", "record not found")
 		return 1
 	}
 	fmt.Printf("removed account %d\n", *accountID)

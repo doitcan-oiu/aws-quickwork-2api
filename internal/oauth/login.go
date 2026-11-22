@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"quickwork-openai/internal/errlog"
 	"quickwork-openai/internal/store"
 )
 
@@ -85,6 +86,7 @@ func Login(ctx context.Context, opts LoginOptions, st *store.Store) (*store.Acco
 	srv := &http.Server{
 		Handler:           http.HandlerFunc(f.handle),
 		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return ctx },
 	}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -292,11 +294,13 @@ func (f *loginFlow) processDiscovery(ctx context.Context, q url.Values) (string,
 
 	client, err := f.registerIDCClient(ctx, idcRegion)
 	if err != nil {
+		logLoginFailure(ctx, "register_client", err)
 		return "", stepErrorf(http.StatusBadGateway, "client registration failed: %v", err)
 	}
 	f.clientID = client.id
 	f.secret = client.secret
 	if f.clientID == "" {
+		logLoginFailure(ctx, "register_client", errlog.At("missing client ID", errors.New("missing client ID")))
 		return "", stepErrorf(http.StatusBadGateway, "client registration returned no clientId")
 	}
 	f.opts.Logf("discovery: tenant=%s idc_region=%s", emptyAs(f.discovery.TenantURL, "-"), idcRegion)
@@ -374,10 +378,12 @@ func (f *loginFlow) completeLogin(ctx context.Context, q url.Values) (*store.Acc
 
 	t, err := f.exchangeCode(ctx, code)
 	if err != nil {
+		logLoginFailure(ctx, "exchange_code", err)
 		return nil, stepErrorf(http.StatusBadGateway, "token exchange failed: %v", err)
 	}
 	info, err := fetchUserInfo(ctx, f.provider, f.stage, f.discovery, f.discovery.TenantURL, t.AccessToken)
 	if err != nil {
+		logLoginFailure(ctx, "fetch_user_info", err)
 		return nil, stepErrorf(http.StatusBadGateway, "user info failed: %v", err)
 	}
 
@@ -402,15 +408,21 @@ func (f *loginFlow) completeLogin(ctx context.Context, q url.Values) (*store.Acc
 		a.TokenEndpoint = f.oidcEndpoint(a.IDCRegion) + "/token"
 	}
 	if err := applySession(a, t, info); err != nil {
+		logLoginFailure(ctx, "prepare_session", err)
 		return nil, stepErrorf(http.StatusBadGateway, "%v", err)
 	}
 	if err := f.store.Save(ctx, a); err != nil {
+		logLoginFailure(ctx, "save_account", err)
 		return nil, stepErrorf(http.StatusInternalServerError, "save account: %v", err)
 	}
 
 	f.opts.Logf("LOGIN_OK %s account_id=%d", info.Display(), a.ID)
 	f.opts.Logf("SESSION_SAVED account=%d ws_host=%s expires=%s", a.ID, a.WSHost, formatEpoch(a.ExpiresAt))
 	return a, nil
+}
+
+func logLoginFailure(ctx context.Context, operation string, err error) {
+	errlog.From(ctx).ErrorContext(ctx, "OAuth login failed", "operation", operation, "reason", errlog.Cause(err))
 }
 
 func accountLabel(a *store.Account) string {
@@ -458,18 +470,18 @@ func (f *loginFlow) exchangeCode(ctx context.Context, code string) (tokens, erro
 }
 
 func (f *loginFlow) failPage(w http.ResponseWriter, status int, message string) {
-	f.opts.Logf("LOGIN_FAILED %s", message)
+	f.opts.Logf("LOGIN_FAILED HTTP %d", status)
 	http.Error(w, message, status)
 	f.finish(nil, errors.New(message))
 }
 
 func fetchUserInfo(ctx context.Context, provider, stage string, d discovery, tenantURL, accessToken string) (UserInfo, error) {
 	if accessToken == "" {
-		return UserInfo{}, errors.New("token response has no access_token")
+		return UserInfo{}, errlog.At("missing access token", errors.New("token response has no access_token"))
 	}
 	base := strings.TrimRight(userInfoBase(provider, stage, d, tenantURL), "/")
 	if base == "" {
-		return UserInfo{}, errors.New("discovery response has no tenant_url")
+		return UserInfo{}, errlog.At("missing tenant URL", errors.New("discovery response has no tenant_url"))
 	}
 	raw, err := postJSON(ctx, base+"/integration/quick-work/user-info", map[string]any{}, map[string]string{
 		"Authorization": "Bearer " + accessToken,
@@ -493,7 +505,16 @@ func doRequest(ctx context.Context, method, endpoint string, body io.Reader, hea
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// A redirect must never forward an OAuth code, client secret or token to another origin.
+			if len(via) >= 10 || req.URL.Scheme != via[0].URL.Scheme || !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return httpResult{}, err
@@ -539,11 +560,12 @@ func decodeJSONResponse(endpoint string, res httpResult) (map[string]any, error)
 		host = u.Host
 	}
 	if res.status < 200 || res.status >= 300 {
-		return nil, fmt.Errorf("HTTP %d from %s: %s", res.status, host, safeBody(res.body))
+		err := fmt.Errorf("HTTP %d from %s: %s", res.status, host, safeBody(res.body))
+		return nil, errlog.WithHTTPStatus(err, res.status)
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(res.body, &raw); err != nil {
-		return nil, fmt.Errorf("invalid JSON from %s: %w", host, err)
+		return nil, errlog.At("invalid upstream JSON", fmt.Errorf("invalid JSON from %s: %w", host, err))
 	}
 	return raw, nil
 }

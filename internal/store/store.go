@@ -86,21 +86,22 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path)
+	// Foreign keys (including usage deletion) and the busy timeout are
+	// connection settings. Apply them again if database/sql replaces a connection.
+	filename, params, hasParams := strings.Cut(path, "?")
+	dsn := filename + "?_fk=on&_timeout=10000"
+	if hasParams {
+		dsn += "&" + params
+	}
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	for _, pragma := range []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=10000",
-		"PRAGMA foreign_keys=ON",
-	} {
-		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("%s: %w", pragma, err)
-		}
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("enable SQLite WAL: %w", err)
 	}
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
@@ -151,6 +152,16 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_email_tenant ON accounts(email, tenant_url);
 CREATE INDEX IF NOT EXISTS idx_accounts_enabled ON accounts(disabled, id);
+CREATE TABLE IF NOT EXISTS account_monthly_usage (
+	month           TEXT NOT NULL,
+	account_id      INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+	reported_ms     INTEGER NOT NULL,
+	estimated_ms    INTEGER NOT NULL,
+	reported_turns  INTEGER NOT NULL,
+	estimated_turns INTEGER NOT NULL,
+	PRIMARY KEY(month, account_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_account_monthly_usage_account ON account_monthly_usage(account_id);
 `
 	_, err := s.db.Exec(schema)
 	return err

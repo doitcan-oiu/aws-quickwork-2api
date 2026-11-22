@@ -8,6 +8,7 @@
 
 ## 功能
 
+- 内置中文 React 管理台，可在浏览器中添加、查看、刷新和移除账号，查看模型与 API 接入示例
 - `POST /v1/chat/completions`，支持流式（SSE）与非流式响应
 - `GET /v1/models`，返回本地模型别名
 - 原生 social 登录（AWS IAM Identity Center OIDC）与企业 OIDC 登录，使用 PKCE
@@ -27,19 +28,40 @@
 
 - Go 1.26+（仅构建时需要）
 - 一个可正常登录的 Amazon Quick 账号
-- 浏览器与 `quickproxy login` 运行在**同一台机器**，且本机回调端口（默认 `18080`）可被浏览器访问
+- 浏览器用于 Amazon 授权。管理台支持手动回填回调地址。CLI 自动回调模式要求浏览器能访问运行 `quickproxy login` 的本机回调端口（默认 `18080`）
 
 ## 快速开始
 
 ### 1. 构建
 
 ```bash
-cd quickwork-openai
-go build -o bin/quickproxy.exe ./cmd/quickproxy   # Windows
-# go build -o bin/quickproxy ./cmd/quickproxy     # macOS / Linux
+go build -o bin/quickproxy ./cmd/quickproxy       # macOS / Linux
+# go build -o bin/quickproxy.exe ./cmd/quickproxy  # Windows
 ```
 
-### 2. 登录上游账号
+### 2. 打开管理台
+
+```bash
+./bin/quickproxy serve
+```
+
+打开 [本机管理台](http://127.0.0.1:8080/admin/)，选择 **添加账号**。按页面提示打开 Amazon 登录页，将跳转后的完整回调地址粘回管理台，再完成授权并粘贴第二个回调地址。即使浏览器显示回调页面无法打开，也可以复制地址栏中的内容。账号保存到 SQLite 后即可使用。
+
+**账号管理**支持查看到期时间、使用次数、刷新凭据和移除账号。**运行概览**列出当前服务的模型，**接口接入**提供 Base URL 和调用示例。管理台读取与 CLI 相同的数据库。配置项通过 `config.json` 修改，重启服务后生效。
+
+打开[账号状态页](http://127.0.0.1:8080/admin/#status)可按账号查看邮箱、凭据到期时间、状态、累计调用次数、本月已用时长及参考剩余时间。手机可收藏自己服务的 `/admin/#status`。
+
+每个账号默认按 10 小时计算参考剩余时间，可在 `monthly_time_budget` 调整。用时按回合结束时的 UTC 自然月归集，每月 1 日 00:00 UTC 自动开始新一期，累计调用次数延续。升级前只有调用次数，时长从升级后的首个回合开始记录。
+
+上游 `turn_usage` 若返回有效的 `duration_ms`，优先记录该时长。缺少时长时，代理用提交请求至收到上游输出的时间估算，并在页面标出来源。统计只覆盖经过此代理的请求。Amazon 的 agent hours 还受工作模式和并行任务影响，实际余额可在 Mission Control 的用量界面核对。[AWS 计量说明](https://aws.amazon.com/quick/pricing/) · [Mission Control 文档](https://docs.aws.amazon.com/quick/latest/userguide/mission-control.html)
+
+2026-11-22 的一次 `fast` 实测中，`turn_usage` 返回了 token 计数和 `cost_usd`。事件带有 `timestamp` 时间戳，未提供回合耗时。状态页将该轮计为一次本地估算。
+
+默认允许从本机以 `127.0.0.1`、`localhost` 或 `[::1]` 访问管理接口。远程使用可通过 SSH 端口转发到本机。
+
+使用反向代理的部署应仅转发 `/v1/`，或在转发 `/admin/` 前设置独立的环境变量 `QUICKPROXY_ADMIN_TOKEN` 并重启。部分反向代理会重写 `Host` 并移除来源信息，这类请求在服务端看起来来自本机。远程管理时启用 HTTPS，并保留浏览器请求的 `Host`。设置令牌后，所有管理操作均需验证，浏览器仅在当前页面内存中保存令牌。代理客户端密钥由 `api_keys` 配置。
+
+### 3. 命令行登录（可选）
 
 ```bash
 ./bin/quickproxy login --provider social
@@ -81,14 +103,6 @@ https://quick.aws.com/sn?qwSurface=desktop:<nonce>:18080:1.2.4660
 
 整个过程不需要服务器开放回调端口；回调端口只用于生成浏览器地址。也可以把 callback URL 通过 stdin 管道传入，便于脚本化。
 
-### 3. 启动反代
-
-```bash
-./bin/quickproxy serve
-```
-
-服务读取当前目录的 `config.json`。默认监听 `127.0.0.1:8080`。如果 `api_keys` 为空，代理关闭 API key 鉴权，适合纯本机使用。
-
 ### 4. 调用
 
 ```bash
@@ -123,6 +137,38 @@ for chunk in client.chat.completions.create(
     print(chunk.choices[0].delta.content or "", end="")
 ```
 
+## Docker Compose 启动
+
+安装 Docker Engine 和 Compose。在仓库根目录运行 `openssl rand -hex 32` 生成管理令牌，保存到密码管理器，并在根目录的 `.env` 写入 `QUICKPROXY_ADMIN_TOKEN=生成的令牌`。启动后用同一个令牌打开管理台。
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+也可以通过当前 shell 的环境变量设置令牌。打开[本机状态页](http://127.0.0.1:8080/admin/#status)。端口已占用时，可在 `.env` 设置 `QUICKPROXY_PORT=8081`。
+
+容器通过只读挂载读取宿主机的 `config.json`，进程以 UID/GID `10001:10001` 运行，需有读取该文件的权限。`quickproxy-data` 命名卷保存 `/app/data` 中的账号、用时和错误日志。新卷从空库开始。如果从原生部署迁移，请先停止旧服务并备份数据库，可以将 Compose 的 `quickproxy-data:/app/data` 换成 `./data:/app/data` 并授予容器用户该目录及其文件的读写权限。
+
+```bash
+docker compose logs -f quickproxy                            # 查看服务输出
+docker compose exec quickproxy tail -f /app/data/error.log  # 只看持久化错误
+docker compose exec quickproxy quickproxy accounts          # 查看同一份账号库
+docker compose down                                         # 停止服务，保留命名卷
+```
+
+默认只向宿主机的回环地址发布端口。手机远程使用时，可在服务器上用 HTTPS 反向代理将 `/admin/` 转发至 `127.0.0.1:8080` 并保留原始 Host，然后访问自己域名下的 `/admin/#status`。如需同时对外提供 `/v1/`，先在配置中设置客户端 `api_keys`。
+
+## 错误日志
+
+服务和命令行会把错误以一行一条的 JSON 同时写入标准错误和 `data/error.log`。记录包括时间、命令和失败的操作。上游错误会尽量带上账号 ID、失败阶段、HTTP 状态或 WebSocket 关闭码。日志使用固定的错误描述，避免记录令牌、回调地址和对话内容。
+
+```bash
+tail -f data/error.log
+```
+
+`error_log` 可改为其他文件路径。设置为空字符串时只输出到标准错误。日志文件无法打开时会在标准错误提示原因。
+
 ## 配置 `config.json`
 
 `quickproxy serve` / `login` 在文件不存在时会写入默认配置。完整示例：
@@ -131,6 +177,8 @@ for chunk in client.chat.completions.create(
 {
   "addr": "127.0.0.1:8080",
   "database": "data/quickwork.db",
+  "error_log": "data/error.log",
+  "monthly_time_budget": "10h",
   "api_keys": [],
   "models": ["smart", "fast", "balanced", "auto"],
   "default_model": "smart",
@@ -159,6 +207,8 @@ for chunk in client.chat.completions.create(
 |---|---|---|
 | `addr` | `127.0.0.1:8080` | HTTP 监听地址 |
 | `database` | `data/quickwork.db` | SQLite 文件；相对路径基于 `config.json` 所在目录 |
+| `error_log` | `data/error.log` | 追加写入的错误日志，相对路径基于配置文件目录 |
+| `monthly_time_budget` | `10h` | 状态页为每个账号计算参考剩余时间使用的每月时长 |
 | `api_keys` | `[]` | 允许的本地 API key；为空时关闭鉴权 |
 | `models` | `smart,fast,balanced,auto` | `/v1/models` 返回值与 model 白名单 |
 | `default_model` | `smart` | 未知 model 的映射 |
@@ -176,6 +226,7 @@ for chunk in client.chat.completions.create(
 | `oauth.region` | 空 | 企业 discovery 的 region 前缀；social 使用 discovery 返回的 IDC region |
 | `oauth.callback_port` | `18080` | 本机 OAuth 回调端口 |
 | `oauth.timeout` | `1h` | 等待浏览器完成登录的超时 |
+| `oauth.web_idp_hosts` | `[]` | 若企业登录使用自定义身份提供方，填写管理台允许的授权和令牌端点主机名，例如 `["your-org.okta.com"]` |
 
 时间字段接受 Go duration 字符串（`30s`、`5m`、`1h`）。
 
@@ -194,6 +245,7 @@ for chunk in client.chat.completions.create(
 | 命令 | 说明 |
 |---|---|
 | `quickproxy serve` | 启动反代 |
+| `quickproxy serve -addr HOST:PORT` | 在本次启动时覆盖配置中的监听地址 |
 | `quickproxy login` | 浏览器 OAuth 登录并写入 SQLite |
 | `quickproxy accounts` | 列出账号、到期时间、使用次数与最近错误 |
 | `quickproxy refresh` | 刷新全部账号的 token |
@@ -253,7 +305,7 @@ sequenceDiagram
     P-->>U: JSON 或 SSE
 ```
 
-- 登录完全在 `quickproxy login` 内完成，不依赖官方桌面应用或 outpost。
+- 管理台与 `quickproxy login` 共用 Go 进程内的 OAuth 流程。
 - `quickproxy serve` 从 SQLite 读取 `jwt`、`ws_host` 和 `provider`，连接上游 WebSocket。
 - 上游不是 OpenAI HTTP API，而是 WebSocket JSON 帧；`internal/proxy/wire.go` 负责帧编码与 event-stream 解码。
 
@@ -316,8 +368,24 @@ quickwork-openai/
   internal/store/          SQLite 账号存储
   internal/accounts/       多账号轮询与自动刷新
   internal/proxy/          WebSocket codec、OpenAI handler
+  internal/admin/          管理接口、访问控制与登录流程
+  web/                     React + TypeScript 管理台及嵌入资源
   data/quickwork.db        运行期账号库（gitignored）
 ```
+
+## 管理台开发
+
+Go 构建会嵌入仓库里的 `web/dist`，直接运行或分发二进制时无需安装 Node.js。修改前端时，使用 Node.js 24 与 pnpm 11，在仓库根目录执行：
+
+```bash
+cd web
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+保持默认地址的 Go 服务运行，在浏览器打开 [开发管理台](http://127.0.0.1:5173/admin/)。Vite 将管理接口转发到 `127.0.0.1:8080`。完成修改后运行 `pnpm build`，将更新后的 `web/dist` 与源码一起提交，再重新构建 Go 程序。
+
+管理台使用 shadcn-admin 原版侧边栏、页头、主题配色和 UI 组件，中文页面连接到本项目的管理接口。字体随可执行文件分发，可离线加载。[模板仓库](https://github.com/satnaing/shadcn-admin) · [使用的版本](web/NOTICE) · [模板许可证](web/public/shadcn-admin-LICENSE.txt)
 
 ## License
 

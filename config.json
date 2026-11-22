@@ -1,6 +1,8 @@
 {
   "addr": "127.0.0.1:8080",
   "database": "data/quickwork.db",
+  "error_log": "data/error.log",
+  "monthly_time_budget": "10h",
   "api_keys": [],
   "models": [
     "smart",

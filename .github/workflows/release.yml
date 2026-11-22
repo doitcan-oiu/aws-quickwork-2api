@@ -13,8 +13,33 @@ env:
   CGO_ENABLED: "0"
 
 jobs:
+  web:
+    name: build WebUI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - name: Build React console
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-ui
+          path: web/dist/
+          if-no-files-found: error
+
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: web
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -34,6 +59,12 @@ jobs:
             ext: ""
     steps:
       - uses: actions/checkout@v4
+      - name: Clear checked-in WebUI bundle
+        run: rm -rf web/dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-ui
+          path: web/dist
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -63,6 +94,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: quickproxy-*
           path: dist
           merge-multiple: true
       - name: Checksums

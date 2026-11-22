@@ -47,27 +47,30 @@ type OAuth struct {
 	Region       string   `json:"region"`
 	CallbackPort int      `json:"callback_port"`
 	Timeout      Duration `json:"timeout"`
+	WebIDPHosts  []string `json:"web_idp_hosts,omitempty"` // Extra trusted enterprise OAuth hosts for WebUI callbacks.
 }
 
 // Config is the server configuration stored in config.json.
 type Config struct {
-	Addr             string   `json:"addr"`
-	Database         string   `json:"database"`
-	APIKeys          []string `json:"api_keys"`
-	Models           []string `json:"models"`
-	DefaultModel     string   `json:"default_model"`
-	RequestTimeout   Duration `json:"request_timeout"`
-	RefreshBefore    Duration `json:"refresh_before"`
-	MaxAttempts      int      `json:"max_attempts"`
-	AppVersion       string   `json:"app_version"`
-	Surface          string   `json:"surface"`
-	OutpostID        string   `json:"outpost_id"`
-	WorkingSessionID string   `json:"working_session_id"`
-	Timezone         string   `json:"timezone"`
-	Locale           string   `json:"locale"`
-	ThinkingEffort   string   `json:"thinking_effort"`
-	KeepSessions     bool     `json:"keep_sessions"`
-	OAuth            OAuth    `json:"oauth"`
+	Addr              string   `json:"addr"`
+	Database          string   `json:"database"`
+	ErrorLog          string   `json:"error_log"`
+	MonthlyTimeBudget Duration `json:"monthly_time_budget"`
+	APIKeys           []string `json:"api_keys"`
+	Models            []string `json:"models"`
+	DefaultModel      string   `json:"default_model"`
+	RequestTimeout    Duration `json:"request_timeout"`
+	RefreshBefore     Duration `json:"refresh_before"`
+	MaxAttempts       int      `json:"max_attempts"`
+	AppVersion        string   `json:"app_version"`
+	Surface           string   `json:"surface"`
+	OutpostID         string   `json:"outpost_id"`
+	WorkingSessionID  string   `json:"working_session_id"`
+	Timezone          string   `json:"timezone"`
+	Locale            string   `json:"locale"`
+	ThinkingEffort    string   `json:"thinking_effort"`
+	KeepSessions      bool     `json:"keep_sessions"`
+	OAuth             OAuth    `json:"oauth"`
 
 	// Path is the absolute config file path; not serialized.
 	Path string `json:"-"`
@@ -76,18 +79,20 @@ type Config struct {
 // Default returns the built-in configuration.
 func Default() Config {
 	return Config{
-		Addr:           "127.0.0.1:8080",
-		Database:       "data/quickwork.db",
-		APIKeys:        []string{},
-		Models:         []string{"smart", "fast", "balanced", "auto"},
-		DefaultModel:   "smart",
-		RequestTimeout: Duration(5 * time.Minute),
-		RefreshBefore:  Duration(10 * time.Minute),
-		MaxAttempts:    3,
-		AppVersion:     "1.2.4660",
-		Surface:        "QUICK_WORK_DESKTOP_WINDOWS",
-		Timezone:       "UTC",
-		Locale:         "en-US",
+		Addr:              "127.0.0.1:8080",
+		Database:          "data/quickwork.db",
+		ErrorLog:          "data/error.log",
+		MonthlyTimeBudget: Duration(10 * time.Hour),
+		APIKeys:           []string{},
+		Models:            []string{"smart", "fast", "balanced", "auto"},
+		DefaultModel:      "smart",
+		RequestTimeout:    Duration(5 * time.Minute),
+		RefreshBefore:     Duration(10 * time.Minute),
+		MaxAttempts:       3,
+		AppVersion:        "1.2.4660",
+		Surface:           "QUICK_WORK_DESKTOP_WINDOWS",
+		Timezone:          "UTC",
+		Locale:            "en-US",
 		OAuth: OAuth{
 			Provider:     "social",
 			BuildStage:   "prod",
@@ -98,7 +103,7 @@ func Default() Config {
 }
 
 // Load reads configPath, creating it with defaults when it does not exist.
-// Relative paths inside the config (database) are resolved against the
+// Relative paths inside the config are resolved against the
 // config file's directory so the server behaves the same from any cwd.
 func Load(configPath string) (*Config, error) {
 	if strings.TrimSpace(configPath) == "" {
@@ -129,6 +134,16 @@ func Load(configPath string) (*Config, error) {
 	}
 	if !filepath.IsAbs(cfg.Database) {
 		cfg.Database = filepath.Join(filepath.Dir(abs), cfg.Database)
+	}
+	cfg.ErrorLog = strings.TrimSpace(cfg.ErrorLog)
+	if cfg.ErrorLog != "" {
+		cfg.ErrorLog = filepath.Clean(cfg.ErrorLog)
+		if !filepath.IsAbs(cfg.ErrorLog) {
+			cfg.ErrorLog = filepath.Join(filepath.Dir(abs), cfg.ErrorLog)
+		}
+		if cfg.ErrorLog == cfg.Path || cfg.ErrorLog == filepath.Clean(cfg.Database) {
+			return nil, errors.New("error_log must be separate from the config and database files")
+		}
 	}
 	return &cfg, nil
 }
@@ -195,6 +210,9 @@ func applyDefaults(c *Config) {
 }
 
 func (c *Config) validate() error {
+	if c.MonthlyTimeBudget.Duration() < time.Millisecond {
+		return fmt.Errorf("monthly_time_budget must be at least 1ms")
+	}
 	if c.RequestTimeout <= 0 {
 		return fmt.Errorf("request_timeout must be positive")
 	}

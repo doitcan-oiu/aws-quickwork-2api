@@ -1,5 +1,6 @@
 # Runtime secrets and session state
 data/
+.env
 *.db
 *.db-shm
 *.db-wal
@@ -7,6 +8,8 @@ data/
 # Build output
 bin/
 dist/
+# The checked-in console lets a Go-only build embed the UI.
+!web/dist/
 *.exe
 
 # Local artifacts

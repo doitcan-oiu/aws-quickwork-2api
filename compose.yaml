@@ -1,0 +1,20 @@
+services:
+  quickproxy:
+    build: .
+    restart: unless-stopped
+    environment:
+      QUICKPROXY_ADMIN_TOKEN: "${QUICKPROXY_ADMIN_TOKEN:?Set QUICKPROXY_ADMIN_TOKEN in .env or the shell}"
+    ports:
+      - "127.0.0.1:${QUICKPROXY_PORT:-8080}:8080"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - quickproxy-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  quickproxy-data:

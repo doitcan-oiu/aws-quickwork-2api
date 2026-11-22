@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"quickwork-openai/internal/accounts"
 	"quickwork-openai/internal/config"
+	"quickwork-openai/internal/errlog"
+	"quickwork-openai/internal/store"
 )
 
 type Server struct {
@@ -57,11 +58,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeOpenAIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "GET required")
+		writeOpenAIError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "GET required", nil)
 		return
 	}
 	if !s.tokens.Allowed(r) {
-		writeOpenAIError(w, http.StatusUnauthorized, "invalid_api_key", "invalid proxy API key")
+		writeOpenAIError(w, r, http.StatusUnauthorized, "invalid_api_key", "invalid proxy API key", nil)
 		return
 	}
 	created := time.Now().Unix()
@@ -79,28 +80,28 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeOpenAIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "POST required")
+		writeOpenAIError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "POST required", nil)
 		return
 	}
 	if !s.tokens.Allowed(r) {
-		writeOpenAIError(w, http.StatusUnauthorized, "invalid_api_key", "invalid proxy API key")
+		writeOpenAIError(w, r, http.StatusUnauthorized, "invalid_api_key", "invalid proxy API key", nil)
 		return
 	}
 
 	var req ChatRequest
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20))
 	if err := dec.Decode(&req); err != nil {
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "invalid JSON body: "+err.Error())
+		writeOpenAIError(w, r, http.StatusBadRequest, "invalid_request_error", "invalid JSON body", fmt.Errorf("invalid JSON body: %w", err))
 		return
 	}
 	if req.N > 1 {
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", "n > 1 is not supported")
+		writeOpenAIError(w, r, http.StatusBadRequest, "invalid_request_error", "n > 1 is not supported", nil)
 		return
 	}
 
 	prompt, err := formatPrompt(req.Messages)
 	if err != nil {
-		writeOpenAIError(w, http.StatusBadRequest, "invalid_request_error", err.Error())
+		writeOpenAIError(w, r, http.StatusBadRequest, "invalid_request_error", "messages lack usable content", err)
 		return
 	}
 	systemPromptText := systemPrompt(req.Messages)
@@ -129,6 +130,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	threadID := strings.TrimSpace(r.Header.Get("X-Thread-Id"))
 	id := "chatcmpl-" + strings.ReplaceAll(uuid(), "-", "")
+	ctx = errlog.WithLogger(ctx, errlog.From(ctx).With("request_id", id))
+	r = r.WithContext(ctx)
 	created := time.Now().Unix()
 	in := ChatInput{
 		Prompt:       prompt,
@@ -147,13 +150,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 				lastErr = err
 				break
 			}
-			sess := SessionFromAccount(acct, s.cfg)
-			if err := sess.validate(); err != nil {
-				s.accounts.ReportFailure(ctx, acct.ID, err)
-				lastErr = err
-				continue
-			}
-			res, err = s.upstream.Chat(ctx, sess, in, nil)
+			res, err = s.chatWithAccount(ctx, acct, in, nil)
 			if err == nil {
 				lastErr = nil
 				break
@@ -169,7 +166,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(lastErr, accounts.ErrNoAccounts) {
 				status, code = http.StatusUnauthorized, "upstream_session_unavailable"
 			}
-			writeOpenAIError(w, status, code, lastErr.Error())
+			writeOpenAIError(w, r, status, code, errlog.Cause(lastErr), lastErr)
 			return
 		}
 		text := res.Text
@@ -185,7 +182,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			toolCalls = filterToolCalls(res.ToolCalls, allowedTools, choiceMode, choiceName, parallelTools)
 		}
 		if strings.TrimSpace(text) == "" && len(toolCalls) == 0 {
-			writeOpenAIError(w, http.StatusBadGateway, "upstream_error", "upstream returned no text or tool calls")
+			writeOpenAIError(w, r, http.StatusBadGateway, "upstream_error", "upstream returned no text or tool calls", nil)
 			return
 		}
 		message := map[string]any{"role": "assistant"}
@@ -218,7 +215,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeOpenAIError(w, http.StatusInternalServerError, "streaming_unavailable", "response writer does not support flushing")
+		writeOpenAIError(w, r, http.StatusInternalServerError, "streaming_unavailable", "response writer does not support flushing", nil)
 		return
 	}
 	started := false
@@ -269,7 +266,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			}},
 		})
 	}
-	writeStreamError := func(message string) {
+	writeStreamError := func(reason string, err error) {
+		message := reportProxyError(r, http.StatusOK, "upstream_error", reason, err)
 		writePayload(map[string]any{"error": map[string]any{
 			"message": message,
 			"type":    "upstream_error",
@@ -343,13 +341,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			lastErr = err
 			break
 		}
-		sess := SessionFromAccount(acct, s.cfg)
-		if err := sess.validate(); err != nil {
-			s.accounts.ReportFailure(ctx, acct.ID, err)
-			lastErr = err
-			continue
-		}
-		res, err = s.upstream.Chat(ctx, sess, in, func(ev StreamEvent) error {
+		res, err = s.chatWithAccount(ctx, acct, in, func(ev StreamEvent) error {
 			switch ev.Type {
 			case "text":
 				if ev.Text == "" {
@@ -395,10 +387,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			if errors.Is(lastErr, accounts.ErrNoAccounts) {
 				status, code = http.StatusUnauthorized, "upstream_session_unavailable"
 			}
-			writeOpenAIError(w, status, code, lastErr.Error())
+			writeOpenAIError(w, r, status, code, errlog.Cause(lastErr), lastErr)
 			return
 		}
-		writeStreamError(lastErr.Error())
+		writeStreamError(errlog.Cause(lastErr), lastErr)
 		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 		return
@@ -426,7 +418,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 			writeChunk(map[string]any{}, "tool_calls")
 		} else {
 			if strings.TrimSpace(text) == "" {
-				writeStreamError("upstream returned no text or tool calls")
+				writeStreamError("upstream returned no text or tool calls", nil)
 				_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 				flusher.Flush()
 				return
@@ -449,7 +441,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !sawText && !sawTool {
-		writeStreamError("upstream returned no text or tool calls")
+		writeStreamError("upstream returned no text or tool calls", nil)
 		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 		return
@@ -471,6 +463,26 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
 	flusher.Flush()
+}
+
+func (s *Server) chatWithAccount(ctx context.Context, acct *store.Account, in ChatInput, onEvent EventFunc) (ChatResult, error) {
+	sess := SessionFromAccount(acct, s.cfg)
+	if err := sess.validate(); err != nil {
+		return ChatResult{}, err
+	}
+	log := errlog.From(ctx).With("account_id", acct.ID)
+	ctx = errlog.WithLogger(ctx, log)
+	result, err := s.upstream.Chat(ctx, sess, in, onEvent)
+	if !result.timing.endedAt.IsZero() {
+		// A disconnected client may already have consumed upstream time.
+		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer cancel()
+		t := result.timing
+		if saveErr := s.accounts.AddMonthlyUsage(saveCtx, acct.ID, t.endedAt, t.duration, t.reported); saveErr != nil {
+			log.ErrorContext(saveCtx, "Saving monthly chat usage failed", "reason", errlog.Cause(saveErr))
+		}
+	}
+	return result, err
 }
 
 func (s *Server) maxAttempts(ctx context.Context) int {
@@ -498,7 +510,6 @@ func (s *Server) mapModel(model string) string {
 	case "":
 		return s.cfg.DefaultModel
 	default:
-		log.Printf("unknown model %q, using %s", model, s.cfg.DefaultModel)
 		return s.cfg.DefaultModel
 	}
 }
@@ -611,7 +622,19 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func writeOpenAIError(w http.ResponseWriter, status int, code, message string) {
+// reason is safe for logs. The original error can contain credentials or
+// upstream content and is only used for the existing client response.
+func reportProxyError(r *http.Request, status int, code, reason string, err error) string {
+	errlog.From(r.Context()).ErrorContext(r.Context(), "Proxy request failed",
+		"route", r.Pattern, "status", status, "code", code, "reason", reason)
+	if err != nil {
+		return err.Error()
+	}
+	return reason
+}
+
+func writeOpenAIError(w http.ResponseWriter, r *http.Request, status int, code, reason string, err error) {
+	message := reportProxyError(r, status, code, reason, err)
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"message": message,
