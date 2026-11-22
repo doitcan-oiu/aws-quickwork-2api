@@ -5,14 +5,185 @@ import { join as join2 } from "path";
 
 // src/auth.js
 import { createHash, randomBytes } from "crypto";
+import { createServer as createServer2, get as httpGet } from "http";
+
+// src/login-wizard.js
+import { readFile } from "fs/promises";
 import { createServer } from "http";
+var listeners = new Map;
+var sessions = new Map;
+var maxBodyBytes = 64 * 1024;
+var invalidCallback = "\u56DE\u8C03\u672A\u901A\u8FC7\u9A8C\u8BC1\u3002\u8BF7\u6838\u5BF9\u5F53\u524D\u6B65\u9AA4\uFF0C\u6216\u56DE\u5230 Magpie \u91CD\u65B0\u767B\u5F55\u3002";
+var assets = new Map([
+  ["/", ["wizard.html", "text/html; charset=utf-8"]],
+  ["/wizard.html", ["wizard.html", "text/html; charset=utf-8"]],
+  ["/wizard.js", ["wizard.js", "text/javascript; charset=utf-8"]]
+]);
+
+class RequestError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+function registerWizardSession(port, session) {
+  const key = String(port);
+  sessions.set(key, session);
+  return () => {
+    if (sessions.get(key) === session)
+      sessions.delete(key);
+  };
+}
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on("data", (chunk) => {
+      if (size > maxBodyBytes)
+        return;
+      size += chunk.length;
+      if (size <= maxBodyBytes)
+        chunks.push(chunk);
+      else
+        reject(new RequestError(413, "\u56DE\u8C03\u5730\u5740\u8FC7\u957F\u3002"));
+    });
+    req.once("end", () => {
+      if (size > maxBodyBytes)
+        return;
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        reject(new RequestError(400, "\u8BF7\u8F93\u5165\u5B8C\u6574\u7684\u56DE\u8C03\u5730\u5740\u3002"));
+      }
+    });
+    req.once("error", reject);
+  });
+}
+async function callback(body) {
+  const { step, url: raw } = body || {};
+  if (step !== 1 && step !== 2)
+    throw new RequestError(400, "\u767B\u5F55\u6B65\u9AA4\u65E0\u6548\u3002");
+  if (typeof raw !== "string" || !/^http:\/\/(?:127\.0\.0\.1|localhost):[1-9]\d{0,4}(?:[/?]|$)/.test(raw) || /[\\\s#]/.test(raw)) {
+    throw new RequestError(400, "\u8BF7\u7C98\u8D34\u6D4F\u89C8\u5668\u5730\u5740\u680F\u4E2D\u7684\u5B8C\u6574\u672C\u673A\u56DE\u8C03\u5730\u5740\u3002");
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new RequestError(400, "\u56DE\u8C03\u5730\u5740\u683C\u5F0F\u4E0D\u6B63\u786E\u3002");
+  }
+  if (step === 1 && url.pathname !== "/callback") {
+    throw new RequestError(400, "\u8BF7\u7C98\u8D34\u8FD9\u6B21\u767B\u5F55\u7684\u7B2C\u4E00\u4E2A\u56DE\u8C03\u5730\u5740\u3002");
+  }
+  if (step === 2 && url.pathname !== "/" && url.pathname !== "/index.html") {
+    throw new RequestError(400, "\u8BF7\u7C98\u8D34\u5B8C\u6210 AWS \u6388\u6743\u540E\u7684\u7B2C\u4E8C\u4E2A\u56DE\u8C03\u5730\u5740\u3002");
+  }
+  const session = sessions.get(url.port);
+  if (!session || step === 1 && url.searchParams.get("nonce") !== session.firstNonce) {
+    throw new RequestError(400, invalidCallback);
+  }
+  let result;
+  try {
+    result = await session.onCallback(step, url);
+  } catch {
+    throw new RequestError(400, invalidCallback);
+  }
+  if (step === 1 && result?.step === 2 && typeof result.url === "string" && result.url.startsWith("https://")) {
+    return { step: 2, url: result.url };
+  }
+  if (step === 2 && result?.done === true)
+    return { done: true };
+  throw new RequestError(400, invalidCallback);
+}
+function json(res, status, data) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(data));
+}
+async function serve(port, req, res) {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Vary", "Origin");
+  const hosts = ["127.0.0.1:" + port, "localhost:" + port];
+  const origin = req.headers.origin;
+  if (!hosts.includes(req.headers.host) || origin !== undefined && origin !== "null" && !hosts.some((host) => origin === "http://" + host)) {
+    return json(res, 403, { error: "\u8BF7\u6C42\u6765\u6E90\u65E0\u6548\u3002" });
+  }
+  if (origin)
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  const path = req.url.split("?")[0];
+  if (path === "/callback" && req.method === "OPTIONS") {
+    res.writeHead(204, { "Access-Control-Allow-Methods": "POST", "Access-Control-Allow-Headers": "Content-Type" });
+    return res.end();
+  }
+  if (path === "/callback" && req.method === "POST") {
+    if (req.headers["content-type"]?.split(";")[0].trim().toLowerCase() !== "application/json") {
+      return json(res, 415, { error: "\u8BF7\u901A\u8FC7\u767B\u5F55\u5411\u5BFC\u63D0\u4EA4\u56DE\u8C03\u3002" });
+    }
+    return json(res, 200, await callback(await readBody(req)));
+  }
+  const asset = assets.get(path);
+  if (req.method !== "GET" || !asset)
+    return json(res, 404, { error: "\u9875\u9762\u4E0D\u5B58\u5728\u3002" });
+  const [file, type] = asset;
+  const bytes = await readFile(new URL("../login/" + file, import.meta.url));
+  const loopback = "http://127.0.0.1:" + port;
+  res.writeHead(200, {
+    "Content-Type": type,
+    "Content-Security-Policy": [
+      "default-src 'none'",
+      "script-src 'self' " + loopback + "/wizard.js",
+      "style-src 'unsafe-inline'",
+      "connect-src 'self' " + loopback + "/callback",
+      "base-uri 'none'",
+      "form-action 'none'"
+    ].join("; ")
+  });
+  res.end(bytes);
+}
+function startLoginWizard(port) {
+  if (listeners.has(port))
+    return listeners.get(port);
+  const ready = new Promise((resolve, reject) => {
+    const server = createServer((req, res) => {
+      serve(req.socket.localPort, req, res).catch((err) => {
+        if (res.destroyed || res.writableEnded)
+          return;
+        if (err instanceof RequestError)
+          json(res, err.status, { error: err.message });
+        else
+          json(res, 500, { error: "\u767B\u5F55\u5411\u5BFC\u6682\u65F6\u4E0D\u53EF\u7528\u3002" });
+      });
+    });
+    server.once("close", () => {
+      if (listeners.get(port) === ready)
+        listeners.delete(port);
+    });
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", () => {
+      server.unref();
+      resolve(server);
+    });
+  }).catch((err) => {
+    if (listeners.get(port) === ready)
+      listeners.delete(port);
+    throw err;
+  });
+  listeners.set(port, ready);
+  return ready;
+}
 // package.json
 var package_default = {
   name: "magpie-amazon-quick",
-  version: "1.2.0",
+  version: "1.3.0",
   description: "Amazon Quick subscription provider for Magpie",
   magpie: {
     icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHN0eWxlPnBhdGh7ZmlsbDojMWMxYzFlfUBtZWRpYSAocHJlZmVycy1jb2xvci1zY2hlbWU6ZGFyayl7cGF0aHtmaWxsOiNmMmYyZjJ9fTwvc3R5bGU+PHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMS41IDUuNUMxLjMgNS43IDEuMiA2LjUgMS4yIDYuOUMxLjIgNi45IDEuMiA3IDEuMiA3LjFDMS4xIDcuNCAxLjMgOCAxLjQgOC4zQzEuNCA4LjQgMS41IDguNSAxLjUgOC43QzEuNSA4LjkgMS43IDkgMS44IDkuM0MyLjIgOS45IDIuMiAxMCAyLjMgMTAuMUMyLjQgMTAuMiAyLjUgMTAuMyAyLjYgMTAuNUMyLjggMTAuOCAzIDExLjEgMy4yIDExLjNDMy4zIDExLjMgMy40IDExLjYgMy42IDExLjhDMy44IDEyIDQuMSAxMi40IDQuMiAxMi41QzQuNyAxMyA1LjIgMTMuNyA1LjQgMTMuOUM2IDE0LjUgNi41IDE1LjEgNi43IDE1LjNDNi43IDE1LjQgNi45IDE1LjUgNi45IDE1LjdDNy4zIDE1LjkgNy43IDE2LjUgNy45IDE2LjhDNy45IDE2LjggOCAxNi45IDggMTYuOUM4LjEgMTYuOSA4LjIgMTcuMiA4LjIgMTcuM0M4LjIgMTcuMyA4LjEgMTcuMiA4LjEgMTcuMUM3LjkgMTYuOSA3LjkgMTYuOSA3LjYgMTYuNkM3LjUgMTYuNSA3LjQgMTYuNSA3LjQgMTYuM0M3LjIgMTYuMiA2LjcgMTUuNyA2LjMgMTUuMkM2LjEgMTUuMSA2IDE0LjkgNiAxNC45QzUuOSAxNC44IDUuNyAxNC43IDUuNyAxNC42QzUuNiAxNC41IDUuNCAxNC4zIDUuMyAxNC4yQzUuMSAxNC4xIDQuOSAxMy44IDQuNyAxMy41QzQuNSAxMy4zIDQuMiAxMy4xIDQuMSAxMi45QzQuMSAxMi45IDMuOCAxMi43IDMuOCAxMi41QzMuNSAxMi4zIDMgMTEuOCAyLjggMTEuNEMxLjggMTAuNSAwLjkgOS42IDAuNyA5LjZDMC42IDkuNyAwLjYgOS44IDAuNSAxMEMwLjUgMTAuMSAwLjYgMTAuMiAwLjUgMTAuM0MwLjUgMTAuNCAwLjYgMTAuNSAwLjYgMTAuNkMwLjUgMTAuNyAwLjUgMTAuOSAwLjYgMTFDMC41IDExLjEgMC42IDExLjQgMC42IDExLjVDMC45IDEyLjkgMS4zIDEzLjggMi44IDE0LjlDMi45IDE1LjEgMy4zIDE1LjMgMy40IDE1LjRDMy40IDE1LjUgMy42IDE1LjYgMy43IDE1LjdDNC4yIDE2IDYuNCAxNy44IDcgMTguNEM3LjQgMTguOCA3LjQgMTguOCA3LjUgMTguOUM3LjYgMTkgNy43IDE5IDcuNyAxOS4xQzcuNyAxOS4yIDcuOCAxOS4yIDcuOSAxOS4yQzcuOSAxOS4zIDguMSAxOS40IDguMSAxOS41QzguMiAxOS42IDguMiAxOS43IDguMyAxOS43QzguMyAxOS43IDguMyAxOS43IDguMiAxOS43QzguMiAxOS42IDguMSAxOS42IDggMTkuNkM3LjkgMTkuNSA3LjkgMTkuNCA3LjggMTkuNEM3LjcgMTkuMyA3LjYgMTkuMiA3LjYgMTkuMkM3LjYgMTkuMSA3LjUgMTkgNy4zIDE4LjlDNy4yIDE4LjkgNi45IDE4LjYgNi43IDE4LjRDNi4xIDE3LjggNC41IDE2LjYgMy41IDE2QzMuNCAxNS44IDMgMTUuNiAyLjkgMTUuNUMyLjYgMTUuMyAxLjUgMTQuNiAwLjkgMTQuM0MwLjcgMTQuMSAwLjYgMTQuMSAwLjYgMTQuMkMwLjUgMTQuNSAwLjggMTUuOSAwLjkgMTYuMUMwLjkgMTYuMiAxIDE2LjIgMC45IDE2LjNDMS4yIDE2LjggMS45IDE3LjYgMi43IDE4LjNDMi44IDE4LjUgNCAxOS4yIDQuNyAxOS41QzYuMiAyMC41IDYuNiAyMC43IDcuNCAyMS41QzguMiAyMi4yIDguNyAyMi43IDkuMyAyMy42QzkuNSAyNC4xIDkuOSAyNC40IDEwLjMgMjUuM0MxMC40IDI1LjUgMTAuNSAyNS44IDEwLjUgMjUuOEMxMC43IDI1LjggMTAuOCAyNS43IDExIDI1LjRDMTEuNiAyNSAxMS45IDI0LjYgMTIuMyAyNC4zQzEyLjggMjQgMTMgMjMuOCAxMyAyMy43QzEzLjEgMjMuNyAxMy4xIDIzLjggMTMgMjRDMTIgMjQuOCAxMSAyNiAxMC4yIDI2LjlDMTAuMSAyNy4xIDkuOSAyNy41IDkuNyAyNy43QzkuNSAyNy44IDkuNCAyOCA5LjQgMjhDOS40IDI4IDkuMyAyOC4zIDkuMSAyOC41QzguNiAyOS4yIDcuNyAzMC44IDcuNyAzMC45QzcuNyAzMSA3LjggMzEgOC4zIDMwLjhDOSAzMC40IDkuNSAzMC4yIDEwLjQgMzBDMTEuNyAyOS42IDEyLjUgMjkuNiAxMS42IDMwQzEwLjUgMzAuMiA5LjcgMzAuNiA5LjIgMzEuMkM4LjggMzEuNyA4LjggMzEuNyA5LjMgMzEuN0MxMC4xIDMxLjggMTAuOSAzMS45IDExLjYgMzIuMkMxMi44IDMyLjcgMTMuNSAzMy4xIDE1LjUgMzQuOEMxNi40IDM1LjUgMTcuMyAzNi4yIDE3LjggMzYuNEMxNy45IDM2LjUgMTguMSAzNi43IDE4LjIgMzYuOEMxOS4xIDM3LjMgMjEuMiAzOC4xIDIyLjMgMzguM0MyMi40IDM4LjMgMjIuNyAzOC4zIDIyLjggMzguM0MyMi44IDM4LjUgMjMgMzguNSAyMyAzOC41QzIzLjEgMzguNSAyMy4yIDM4LjUgMjMuMyAzOC41QzIzLjYgMzguNiAyNS45IDM4LjYgMjYuMSAzOC41QzI2LjIgMzguNSAyNi4zIDM4LjUgMjYuNCAzOC41QzI2LjUgMzguNSAyNi42IDM4LjUgMjYuNyAzOC4zQzI2LjcgMzguMyAyNyAzOC4zIDI3LjEgMzguM0MyOC4zIDM4LjEgMzAuMiAzNy4zIDMxLjQgMzYuN0MzMS41IDM2LjcgMzEuNyAzNi40IDMxLjggMzYuNEMzMi4yIDM2LjIgMzMuMiAzNS40IDMzLjQgMzUuMkMzNC4yIDM0LjUgMzUuNSAzMyAzNS44IDMyLjZDMzUuOCAzMi41IDM2IDMyLjIgMzYuMSAzMkMzNi40IDMxLjggMzYuNiAzMS40IDM2LjYgMzEuMkMzNi43IDMxLjEgMzYuOCAzMC45IDM2LjkgMzAuOEMzNy4yIDMwLjQgMzcuNSAyOS42IDM3LjcgMjkuMkMzNy43IDI5LjEgMzcuOCAyOC43IDM3LjkgMjguN0MzOC4xIDI4LjUgMzguNCAyNy4xIDM4LjUgMjYuOEMzOSAyNS4yIDM5LjEgMjMuNyAzOSAyMi40QzM5IDIyLjIgMzguOSAyMS45IDM4LjkgMjEuOEMzOC45IDIxLjcgMzguOSAyMS42IDM4LjkgMjEuNEMzOC42IDIwLjUgMzguNSAxOS45IDM4LjIgMTlDMzcuOSAxOC41IDM3LjUgMTcuNSAzNy4zIDE3LjJDMzcgMTYuOCAzNi44IDE1LjggMzYuOCAxNS4yQzM2LjggMTMuOCAzNy43IDEyLjcgMzkuNiAxMi4yQzQwLjEgMTIuMSA0MS4zIDExLjggNDIuMSAxMS43QzQzLjUgMTEuNSA0My41IDExLjUgNDMuNCAxMS4zQzQyLjkgMTAuNyA0MC45IDkuOSAzOS4yIDkuN0MzNy45IDkuNSAzOC4xIDkuNSAzNy42IDlDMzcgOC42IDM2LjQgOCAzNiA3LjlDMzYgNy44IDM1LjggNy44IDM1LjcgNy43QzM1LjEgNy4zIDM0LjIgNyAzMy4xIDYuOUMzMi42IDYuNyAzMS42IDYuOSAzMSA3QzI5LjYgNy4zIDI4LjMgOCAyNy4zIDkuMkMyNi43IDkuOCAyNi4yIDEwLjggMjUuNyAxMS43QzI1LjUgMTIuMSAyNC44IDEzLjQgMjQuNyAxMy43QzI0LjYgMTMuOSAyNC41IDE0LjEgMjQuMSAxNC43QzIzLjUgMTUuNyAyMi4xIDE2LjkgMjAuNiAxNy44QzIwLjUgMTggMjAuMyAxOC4yIDIwLjEgMTguM0MxOS43IDE4LjUgMTkuNCAxOC44IDE5LjEgMTlDMTguOSAxOS4xIDE4LjcgMTkuMyAxOC41IDE5LjRDMTggMTkuOCAxNy4yIDIwLjMgMTcgMjAuNUMxNi45IDIwLjUgMTYuOCAyMC42IDE2LjcgMjAuN0MxNi4zIDIwLjggMTYuMSAyMC45IDE2IDIwLjlDMTUuNSAyMC44IDE0LjkgMjAuNSAxNC4yIDIwLjJDMTMuNyAxOS44IDEyLjcgMTguOSAxMi40IDE4LjZDMTIuMyAxOC41IDEyLjIgMTguNCAxMi4xIDE4LjJDMTEuOSAxOCAxMS4yIDE3LjEgMTEgMTYuNkMxMC45IDE2LjUgMTAuOCAxNi40IDEwLjcgMTYuM0MxMC43IDE2LjIgMTAuNiAxNi4xIDEwLjYgMTUuOUMxMC41IDE1LjkgMTAuNCAxNS43IDEwLjQgMTUuNkMxMC4zIDE1LjUgMTAuMiAxNS4yIDEwLjEgMTVDMTAgMTQuOCA5LjggMTQuNCA5LjcgMTQuMkM5LjYgMTQgOS41IDEzLjcgOS40IDEzLjZDOS40IDEzLjQgOS4zIDEzLjIgOS4yIDEzQzkuMiAxMi44IDkgMTIuNiA5IDEyLjVDOC45IDEyLjMgOC43IDEyLjEgOC43IDEyQzguNyAxMiA4LjUgMTEuNyA4LjUgMTEuN0M4LjMgMTEuMiA4LjIgMTAuOSA3LjUgMTBDNi40IDguMyA0LjIgNi40IDIuNyA1LjhDMiA1LjUgMS42IDUuNCAxLjUgNS41Wk0yOC40IDE2LjdDMjkuMiAxNi45IDI5LjcgMTcuMiAyOS45IDE3LjdDMzAuMSAxOC4yIDMwIDE4LjkgMjkuNiAxOS40QzI5LjIgMTkuOSAyOC4yIDIwLjkgMjcuNiAyMS4yQzI2LjggMjEuNyAyNS4zIDIyLjQgMjQuMiAyMi43QzIzLjkgMjIuOCAyMy42IDIyLjkgMjMuNSAyMi45QzIyLjggMjMuMiAyMC43IDIzLjcgMTkuNiAyNEMxOSAyNC4yIDE4LjQgMjQuMyAxOC4xIDI0LjRDMTcuOSAyNC40IDE2LjEgMjQuOSAxNS4zIDI1LjFDMTQuNiAyNS4yIDE0LjcgMjUuMSAxNS43IDIzLjZDMTYuNCAyMi43IDE4LjUgMjAuNiAxOS40IDE5LjlDMjAuOCAxOC44IDIxLjQgMTguNCAyMy4yIDE3LjZDMjMuOCAxNy40IDI1LjYgMTYuOCAyNS45IDE2LjhDMjUuOSAxNi44IDI2LjMgMTYuOCAyNi42IDE2LjdDMjYuOCAxNi43IDI4LjIgMTYuNyAyOC40IDE2LjdaTTMwLjQgMjAuMkMzMC41IDIwLjMgMzAuNiAyMC42IDMwLjYgMjAuN0MzMS43IDIzLjEgMzMuNCAyNC42IDM1LjYgMjUuM0MzNi4xIDI1LjUgMzYuNyAyNS43IDM3LjIgMjUuOEMzNy43IDI1LjggMzcuOCAyNS45IDM3LjggMjYuMUMzNy43IDI2LjIgMzcuNyAyNi4zIDM3LjcgMjYuNUMzNy43IDI2LjYgMzcuNyAyNi44IDM3LjYgMjdDMzcuNCAyOC41IDM2LjggMjkuOSAzNi4xIDMxQzM2LjEgMzEuMiAzNS45IDMxLjQgMzUuOSAzMS42QzM1LjcgMzEuOSAzNS4yIDMyLjYgMzQuNyAzMy4zQzMyLjYgMzUuNiAyOS43IDM3LjMgMjYuNiAzNy44QzI2LjUgMzcuOCAyNi4zIDM3LjkgMjYuMiAzNy45QzI1LjggMzcuOSAyMy43IDM3LjkgMjMuMyAzNy45QzIzLjIgMzcuOSAyMyAzNy44IDIyLjkgMzcuOEMyMS4xIDM3LjYgMTkuMyAzNi44IDE4IDM1LjdDMTcuNyAzNS40IDE3IDM0LjcgMTYuOCAzNC41QzE2LjMgMzMuOCAxNi4xIDMzIDE2LjMgMzIuNUMxNi41IDMxLjggMTYuOCAzMS42IDE3LjkgMzEuMUMxOS4xIDMwLjUgMTkuNCAzMC40IDIwLjIgMzBDMjEuNCAyOS40IDIzLjIgMjguNCAyMy45IDI3LjlDMjMuOSAyNy44IDI0LjIgMjcuNyAyNC41IDI3LjZDMjYuMyAyNi4zIDI4IDI0LjYgMjguOSAyMi45QzI5LjUgMjIuMiAyOS43IDIxLjYgMjkuOSAyMC43QzMwLjEgMjAgMzAuMiAxOS45IDMwLjQgMjAuMloiLz48L3N2Zz4K",
+    page: {
+      title: "Quick \u767B\u5F55",
+      file: "login/index.html",
+      service: { port: 43871, option: "loginWizardPort" }
+    },
     panels: [
       {
         slot: "settings",
@@ -22,6 +193,7 @@ var package_default = {
     ],
     options: {
       monthlyHours: 10,
+      loginWizardPort: 43871,
       transport: "aidp",
       appVersion: "1.2.4660",
       region: "",
@@ -45,6 +217,7 @@ var package_default = {
     "index.js",
     "src",
     "settings",
+    "login",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES"
@@ -77,6 +250,9 @@ function readOptions(options = {}) {
   }
   if (!Number.isFinite(values.monthlyHours * 3600000) || values.monthlyHours <= 0) {
     invalid("monthlyHours", "\u8BF7\u8F93\u5165\u5927\u4E8E 0 \u7684\u6709\u6548\u5C0F\u65F6\u6570\u3002");
+  }
+  if (!Number.isInteger(values.loginWizardPort) || values.loginWizardPort < 1024 || values.loginWizardPort > 65535) {
+    invalid("loginWizardPort", "\u767B\u5F55\u5411\u5BFC\u7AEF\u53E3\u987B\u4E3A 1024 \u81F3 65535 \u7684\u6574\u6570\u3002");
   }
   if (!["aidp", "gateway"].includes(values.transport))
     invalid("transport", "\u8BF7\u9009\u62E9 AIDP \u6216 Quick Gateway\u3002");
@@ -323,7 +499,7 @@ async function discover(provider, query, region, redirect, signal) {
   }
   return { meta, authorize };
 }
-async function signIn(provider, { appVersion = defaultOptions.appVersion, region: configuredRegion }, options = {}) {
+async function signIn(provider, { appVersion = defaultOptions.appVersion, region: configuredRegion }, options = {}, wizardAvailable) {
   const region = configuredRegion || process.env.AMAZON_QUICK_REGION || "us-east-1";
   if (!regionPattern.test(region))
     throw new Error("Invalid Amazon Quick login region");
@@ -338,7 +514,7 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
     settle = resolve;
   });
   let discovery, redeemed = false, redirect, port;
-  const server = createServer(async (req, res) => {
+  const server = createServer2(async (req, res) => {
     const reply = (status, body = "") => {
       res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
       res.end(body);
@@ -407,11 +583,12 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
       finish({ type: "failed", error: err instanceof Error ? err.message : "Amazon Quick sign-in failed" });
     }
   });
-  let timer, callbackSignal;
+  let timer, callbackSignal, unregisterWizard;
   const abort = () => finish({ type: "failed", error: "Amazon Quick sign-in cancelled or timed out" });
   function finish(value) {
     if (lifetime.signal.aborted)
       return;
+    unregisterWizard?.();
     clearTimeout(timer);
     options.signal?.removeEventListener("abort", abort);
     callbackSignal?.removeEventListener("abort", abort);
@@ -429,6 +606,27 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
   server.on("error", () => finish({ type: "failed", error: "Amazon Quick callback listener failed" }));
   port = server.address().port;
   redirect = "http://" + (provider === "enterprise" ? "localhost:" : "127.0.0.1:") + port;
+  if (wizardAvailable) {
+    unregisterWizard = registerWizardSession(port, {
+      firstNonce: nonce,
+      async onCallback(step, url) {
+        if (step === 2 && (!discovery || url.searchParams.get("state") !== state))
+          throw new Error("Invalid authorization callback");
+        return new Promise((resolve, reject) => {
+          const request = httpGet({ hostname: "127.0.0.1", port, path: url.pathname + url.search, agent: false }, (response) => {
+            response.resume();
+            if (step === 1 && response.statusCode === 302 && response.headers.location) {
+              resolve({ step: 2, url: response.headers.location });
+            } else if (step === 2 && response.statusCode === 200)
+              resolve({ done: true });
+            else
+              reject(new Error("Callback rejected"));
+          });
+          request.on("error", reject);
+        });
+      }
+    });
+  }
   timer = setTimeout(abort, 10 * 60000);
   timer.unref?.();
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -438,7 +636,7 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
     url: discoveryURL(provider, nonce, port, region, appVersion),
     method: "auto",
     opened: true,
-    instructions: "\u590D\u5236\u4E0B\u65B9\u767B\u5F55\u94FE\u63A5\uFF0C\u7528\u4F60\u9009\u62E9\u7684\u6D4F\u89C8\u5668\u6216\u65E0\u75D5\u7A97\u53E3\u6253\u5F00\u3002" + "\u5982\u679C\u56DE\u8C03\u9875\u9762\u6253\u4E0D\u5F00\uFF0C\u628A\u5730\u5740\u680F\u91CC\u7684\u5B8C\u6574\u5730\u5740\u7C98\u8D34\u5230 Magpie \u7684\u56DE\u8C03\u8F93\u5165\u6846\u5E76\u63D0\u4EA4\u3002" + "\u7B49\u94FE\u63A5\u66F4\u65B0\u540E\uFF0C\u590D\u5236\u65B0\u94FE\u63A5\u5230\u540C\u4E00\u4E2A\u6D4F\u89C8\u5668\u7A97\u53E3\u7EE7\u7EED\u6388\u6743\uFF0C\u518D\u7C98\u8D34\u7B2C\u4E8C\u4E2A\u5B8C\u6574\u56DE\u8C03\u5730\u5740\u5E76\u63D0\u4EA4\u3002",
+    instructions: wizardAvailable ? "\u590D\u5236\u4E0B\u65B9\u767B\u5F55\u94FE\u63A5\uFF0C\u7528\u65E0\u75D5\u7A97\u53E3\u6216\u5176\u4ED6\u6D4F\u89C8\u5668\u767B\u5F55 AWS\u3002\u4E24\u6761\u56DE\u8C03\u90FD\u7C98\u8D34\u5230 Magpie \u5DE6\u4FA7\u7684\u300CQuick \u767B\u5F55\u300D\u5411\u5BFC\uFF0C\u90A3\u91CC\u4F1A\u663E\u793A\u5F53\u524D\u6B65\u9AA4\u3002" : "\u590D\u5236\u4E0B\u65B9\u767B\u5F55\u94FE\u63A5\uFF0C\u7528\u4F60\u9009\u62E9\u7684\u6D4F\u89C8\u5668\u6216\u65E0\u75D5\u7A97\u53E3\u6253\u5F00\u3002" + "\u5982\u679C\u56DE\u8C03\u9875\u9762\u6253\u4E0D\u5F00\uFF0C\u628A\u5730\u5740\u680F\u91CC\u7684\u5B8C\u6574\u5730\u5740\u7C98\u8D34\u5230 Magpie \u7684\u56DE\u8C03\u8F93\u5165\u6846\u5E76\u63D0\u4EA4\u3002" + "\u7B49\u94FE\u63A5\u66F4\u65B0\u540E\uFF0C\u590D\u5236\u65B0\u94FE\u63A5\u5230\u540C\u4E00\u4E2A\u6D4F\u89C8\u5668\u7A97\u53E3\u7EE7\u7EED\u6388\u6743\uFF0C\u518D\u7C98\u8D34\u7B2C\u4E8C\u4E2A\u5B8C\u6574\u56DE\u8C03\u5730\u5740\u5E76\u63D0\u4EA4\u3002",
     async callback(_code, context = {}) {
       callbackSignal = context.signal;
       callbackSignal?.addEventListener("abort", abort, { once: true });
@@ -452,10 +650,10 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
     }
   };
 }
-function createAuthMethods(clientOptions = defaultOptions) {
+function createAuthMethods(clientOptions = defaultOptions, wizardAvailable = false) {
   return [
-    { type: "oauth", label: "Amazon Quick \u4E2A\u4EBA\u8D26\u53F7", authorize: (_inputs, context) => signIn("social", clientOptions, context) },
-    { type: "oauth", label: "Amazon Quick \u4F01\u4E1A\u8D26\u53F7", authorize: (_inputs, context) => signIn("enterprise", clientOptions, context) }
+    { type: "oauth", label: "Amazon Quick \u4E2A\u4EBA\u8D26\u53F7", authorize: (_inputs, context) => signIn("social", clientOptions, context, wizardAvailable) },
+    { type: "oauth", label: "Amazon Quick \u4F01\u4E1A\u8D26\u53F7", authorize: (_inputs, context) => signIn("enterprise", clientOptions, context, wizardAvailable) }
   ];
 }
 
@@ -3201,6 +3399,15 @@ var models = Object.fromEntries(["smart", "fast", "balanced", "auto"].map((mode)
 async function AmazonQuickPlugin({ client, directory, magpie }, options = {}) {
   const dataDir = magpie && directory ? directory : join2(process.env.XDG_DATA_HOME || join2(homedir(), ".local", "share"), "magpie");
   const clientOptions = readOptions(options);
+  let wizardAvailable = false;
+  if (magpie) {
+    try {
+      await startLoginWizard(clientOptions.loginWizardPort);
+      wizardAvailable = true;
+    } catch {
+      await client.app?.log?.({ body: { service: provider, level: "warn", message: "\u767B\u5F55\u5411\u5BFC\u7AEF\u53E3\u65E0\u6CD5\u76D1\u542C\u3002\u53EF\u4F7F\u7528\u4F9B\u5E94\u5546\u5361\u7247\u5B8C\u6210\u767B\u5F55\uFF0C\u6216\u5728\u63D2\u4EF6\u9AD8\u7EA7\u8BBE\u7F6E\u4E2D\u66F4\u6539\u7AEF\u53E3\u3002" } });
+    }
+  }
   return {
     async config(config) {
       config.provider ??= {};
@@ -3214,7 +3421,7 @@ async function AmazonQuickPlugin({ client, directory, magpie }, options = {}) {
     },
     auth: {
       provider,
-      methods: createAuthMethods(clientOptions),
+      methods: createAuthMethods(clientOptions, wizardAvailable),
       refresh: refreshAuth,
       async usage(getAuth) {
         return accountUsage(dataDir, sessionFromAuth(await getAuth()), clientOptions.monthlyHours);

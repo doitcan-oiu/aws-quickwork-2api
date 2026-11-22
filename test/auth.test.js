@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { get as httpGet } from 'node:http'
 import test from 'node:test'
 import { createAuthMethods, getSession, refreshAuth, sessionFromAuth } from '../src/auth.js'
+import { startLoginWizard } from '../src/login-wizard.js'
 
 const authMethods = createAuthMethods()
 const loopbackFetch = globalThis.fetch.bind(globalThis)
@@ -94,6 +95,48 @@ for (const [i, provider] of ['social', 'enterprise'].entries()) {
     })
   })
 }
+
+test('wizard advances only on the correct callback and completes the original Magpie login', async t => {
+  const wizard = await startLoginWizard(0)
+  const controller = new AbortController()
+  t.after(() => { controller.abort(); wizard.close() })
+  const flow = await createAuthMethods(undefined, true)[1].authorize({}, { signal: controller.signal })
+  const { nonce, port } = readSurface(flow)
+  const submit = (step, url) => loopbackFetch('http://127.0.0.1:' + wizard.address().port + '/callback', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'null' },
+    body: JSON.stringify({ step, url }),
+  })
+  assert.match(flow.instructions, /Quick 登录/)
+  const first = new URL('http://localhost:' + port + '/callback')
+  first.search = new URLSearchParams({
+    nonce, tenantUrl: 'https://test.plato.ai.aws.dev', clientId: 'client',
+    authEndpoint: 'https://login.microsoftonline.com/test/authorize',
+    tokenEndpoint: 'https://login.microsoftonline.com/test/token',
+  })
+  const vendor = t.mock.method(globalThis, 'fetch', async endpoint => {
+    if (endpoint === 'https://login.microsoftonline.com/test/token') {
+      return Response.json({ access_token: 'test-access', expires_in: 3600 })
+    }
+    assert.equal(endpoint, 'https://test.plato.ai.aws.dev/integration/quick-work/user-info')
+    return Response.json({ userArn: 'arn:test', email: 'wizard@example.test' })
+  })
+  assert.equal((await submit(1, first.href.replace(nonce, 'other'))).status, 400)
+  assert.equal((await submit(2, first.href)).status, 400)
+  const accepted = await submit(1, first.href)
+  assert.equal(accepted.headers.get('Access-Control-Allow-Origin'), 'null')
+  const next = await accepted.json()
+  assert.equal(next.step, 2)
+  const auth = new URL(next.url)
+  const last = new URL(auth.searchParams.get('redirect_uri'))
+  last.search = new URLSearchParams({ code: 'test', state: auth.searchParams.get('state') })
+  assert.equal((await submit(2, last.href.replace(auth.searchParams.get('state'), 'other'))).status, 400)
+  assert.equal(vendor.mock.callCount(), 0)
+  const result = flow.callback()
+  assert.deepEqual(await (await submit(2, last.href)).json(), { done: true })
+  assert.equal((await result).accountId, 'wizard@example.test')
+  assert.equal((await submit(2, last.href)).status, 400)
+  assert.equal(vendor.mock.callCount(), 2)
+})
 
 test('Quick login versions and regions stay independent across concurrent plugin instances', async t => {
   const controller = new AbortController()

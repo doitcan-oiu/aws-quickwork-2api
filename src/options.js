@@ -20,6 +20,9 @@ export function readOptions(options = {}) {
   if (!Number.isFinite(values.monthlyHours * 3_600_000) || values.monthlyHours <= 0) {
     invalid('monthlyHours', '请输入大于 0 的有效小时数。')
   }
+  if (!Number.isInteger(values.loginWizardPort) || values.loginWizardPort < 1024 || values.loginWizardPort > 65535) {
+    invalid('loginWizardPort', '登录向导端口须为 1024 至 65535 的整数。')
+  }
   if (!['aidp', 'gateway'].includes(values.transport)) invalid('transport', '请选择 AIDP 或 Quick Gateway。')
   if (values.appVersion.length > 64 || !versionPattern.test(values.appVersion)) {
     invalid('appVersion', '请输入 Quick App 版本号，例如 1.2.4660。')

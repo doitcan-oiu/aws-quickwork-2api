@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Amazon Quick 登录</title>
+  <script src="./wizard.js" defer></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --fg: #212128; --muted: #585861; --border: #d1d1da; --panel: #f6f6fa;
+      --accent: #534ba3; --on-accent: #fff; --error: #aa2438;
+      font: 100%/1.55 system-ui, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg: #ededf1; --muted: #b8b8c4; --border: #555560; --panel: #292930;
+        --accent: #c1baff; --on-accent: #26213e; --error: #ff9aab; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: Canvas; color: var(--fg); }
+    main { max-width: 36rem; padding: clamp(1rem, 4vw, 2rem); }
+    ol { display: flex; margin: 0 0 1.5rem; padding: 0; gap: .75rem; list-style: none; }
+    li { flex: 1; padding: .45rem 0; border-bottom: 2px solid var(--border); font-size: .875rem; color: var(--muted); }
+    li[aria-current="step"] { color: var(--accent); border-color: currentColor; font-weight: 700; }
+    h1 { font-size: clamp(1.3rem, 5vw, 1.6rem); line-height: 1.35; margin: 0 0 .6rem; }
+    p { margin: 0 0 1.15rem; }
+    details { margin-bottom: 1rem; color: var(--muted); font-size: .9rem; }
+    summary { cursor: pointer; }
+    details p { margin: .4rem 0 0; }
+    label { display: block; margin-bottom: .35rem; font-weight: 600; }
+    textarea, input, button { font: inherit; }
+    textarea, input { width: 100%; min-width: 0; padding: .6rem; color: inherit; background: Canvas;
+      border: 1px solid var(--border); border-radius: .45rem; }
+    textarea { display: block; min-height: 4.75rem; resize: vertical; }
+    textarea[aria-invalid="true"] { border-color: var(--error); }
+    button { min-height: 2.75rem; border: 1px solid var(--border); border-radius: .45rem; padding: .4rem .9rem;
+      color: inherit; background: Canvas; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #approval { padding: .8rem; margin-bottom: 1rem; background: var(--panel); border-radius: .5rem; }
+    .link { display: flex; gap: .45rem; }
+    .link button { white-space: nowrap; }
+    #submit { margin-top: .8rem; background: var(--accent); color: var(--on-accent); border-color: transparent; }
+    #restart { margin-top: .65rem; }
+    #error, #copy-status { margin: .4rem 0 0; font-size: .9rem; }
+    #error { color: var(--error); }
+    #copy-status { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main aria-label="Amazon Quick 登录">
+    <ol aria-label="登录进度">
+      <li id="first-mark" aria-current="step">1 · 登录账号</li>
+      <li id="second-mark">2 · 确认授权</li>
+    </ol>
+    <h1 id="heading" tabindex="-1">第 1/2 步 · 登录 AWS 账号</h1>
+    <p id="instruction">登录 AWS 后，复制浏览器地址栏里的完整回调链接，粘贴到下方。即使页面提示无法连接，也可以复制地址。</p>
+    <details id="start-help">
+      <summary>还没开始登录？</summary>
+      <p>在 Magpie「供应商 → Amazon Quick」点击「登录」。复制登录链接，用你选择的浏览器或无痕窗口打开，登录后回到这里。</p>
+    </details>
+    <div id="approval" hidden>
+      <label for="approval-url">AWS 授权链接</label>
+      <div class="link">
+        <input id="approval-url" type="text" readonly spellcheck="false" autocomplete="off">
+        <button id="copy" type="button">复制链接</button>
+      </div>
+      <p id="copy-status" role="status"></p>
+    </div>
+    <div id="form" role="group" aria-labelledby="callback-label">
+      <label for="callback" id="callback-label">第一个回调链接</label>
+      <textarea id="callback" rows="2" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="error" placeholder="粘贴登录后的完整地址"></textarea>
+      <p id="error" role="alert"></p>
+      <button id="submit" type="button" disabled>提交并继续</button>
+    </div>
+    <button id="restart" type="button" hidden>添加另一个账号</button>
+  </main>
+</body>
+</html>
