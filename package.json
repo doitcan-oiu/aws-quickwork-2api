@@ -1,0 +1,27 @@
+{
+  "name": "magpie-amazon-quick",
+  "version": "1.0.0",
+  "description": "Amazon Quick subscription provider for Magpie",
+  "type": "module",
+  "main": "./dist/amazon-quick.mjs",
+  "exports": {
+    ".": "./dist/amazon-quick.mjs"
+  },
+  "files": [
+    "dist",
+    "index.js",
+    "src",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES"
+  ],
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "build": "bun build index.js --target=bun --format=esm --outfile=dist/amazon-quick.mjs",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "cborg": "7.0.0",
+    "ws": "8.23.0"
+  }
+}

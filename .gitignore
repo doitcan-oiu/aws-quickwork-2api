@@ -1,18 +1,10 @@
-# Runtime secrets and session state
+node_modules/
 data/
-!web/src/**/data/
 .env
+*.log
 *.db
 *.db-shm
 *.db-wal
-
-# Build output
-bin/
-dist/
-# The checked-in console lets a Go-only build embed the UI.
-!web/dist/
-*.exe
-
-# Local artifacts
-page-signup.png
-*.log
+*.sqlite*
+*.tgz
+.DS_Store
