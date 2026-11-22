@@ -92,6 +92,45 @@ test('pre-stream failure is an HTTP error and malformed input never opens a sock
   assert.equal(attempts, 1)
 })
 
+test('audit_echo from fragmented Quick text is a client tool call in both JSON and SSE', async () => {
+  const tool = { name: 'audit_echo', parameters: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] } }
+  const args = { text: 'audit "OK"\n第二行' }
+  const expected = { name: tool.name, arguments: JSON.stringify(args) }
+  const request = {
+    ...req, tools: [{ type: 'function', function: tool }], tool_choice: { type: 'function', function: { name: tool.name } },
+    messages: [{ role: 'system', content: 'Use the native function-calling API.' }, { role: 'user', content: 'Call audit_echo.' }],
+  }
+  const fetch = client(async function* (_account, turn) {
+    assert.match(turn.systemPrompt, /audit_echo/)
+    assert.ok(turn.prompt.includes('"parameters":' + JSON.stringify(tool.parameters)))
+    assert.ok(turn.prompt.includes('<client_tool_call>{"name":"audit_echo"'))
+    const body = JSON.stringify({ tool_calls: [{ id: 'audit-1', type: 'function', function: expected }] })
+    for (let i = 0; i < body.length; i += 6) yield { type: 'text', text: body.slice(i, i + 6) }
+  })
+  const response = await post(fetch, request)
+  assert.equal(response.status, 200)
+  const [choice] = (await response.json()).choices
+  assert.equal(choice.message.content, null)
+  assert.equal(choice.finish_reason, 'tool_calls')
+  assert.equal(choice.message.tool_calls.length, 1)
+  const [call] = choice.message.tool_calls
+  assert.equal(call.type, 'function')
+  assert.ok(call.id)
+  assert.deepEqual(call.function, expected)
+
+  const stream = await post(fetch, { ...request, stream: true })
+  assert.equal(stream.status, 200)
+  const frames = (await stream.text()).trim().split('\n\n').map(frame => frame.slice(6))
+  assert.equal(frames.pop(), '[DONE]')
+  const chunks = frames.map(frame => JSON.parse(frame).choices[0])
+  assert.equal(chunks.at(-1).finish_reason, 'tool_calls')
+  assert.equal(chunks.some(chunk => chunk.delta.content), false)
+  const calls = chunks.flatMap(chunk => chunk.delta.tool_calls ?? [])
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].index, 0)
+  assert.deepEqual(calls[0].function, expected)
+})
+
 test('a streamed error after the first delta terminates the response without leaking upstream details', async () => {
   const fetch = client(async function* () {
     yield { type: 'text', text: 'Hello' }

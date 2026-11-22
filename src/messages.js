@@ -45,13 +45,14 @@ function toolSettings(body) {
 }
 
 function toolInstructions(tools) {
+  const names = [...tools.allowed.keys()]
   return [
     'The caller can execute the following functions:',
     JSON.stringify([...tools.allowed.values()]),
-    'To request a function, emit one marker per call using this format:',
-    '<client_tool_call>{"name":"FUNCTION_NAME","arguments":{}}</client_tool_call>',
-    'Use only the listed functions. The caller will return the result in the next message.',
-    tools.required && 'Call at least one of the listed functions in this turn.',
+    'These client functions are available through a text bridge. For a native function call, emit one marker per call; the bridge converts it to the caller’s tool_calls field.',
+    '<client_tool_call>{"name":' + JSON.stringify(names.length === 1 ? names[0] : 'FUNCTION_NAME') + ',"arguments":{}}</client_tool_call>',
+    'Use the actual arguments from the task, following the declared parameter schema. Output the marker alone and wait for the caller to return the result.',
+    tools.required && (names.length === 1 ? 'You must call ' + JSON.stringify(names[0]) + ' this turn.' : 'You must call at least one listed function this turn.'),
     !tools.parallel && 'Call at most one function in this turn.',
   ].filter(Boolean).join('\n')
 }
@@ -94,17 +95,29 @@ export function prepareTurn(body) {
     }
   }
   if (!history.length) badRequest('messages contain no user text, assistant text, or tool history.')
-  if (tools.enabled) system.push(toolInstructions(tools))
-  const prompt = history.length === 1 && history[0][0] === 'User'
+  let prompt = history.length === 1 && history[0][0] === 'User'
     ? history[0][1]
     : history.map(([label, text]) => label + ': ' + text).join('\n\n')
+  if (tools.enabled) {
+    const protocol = toolInstructions(tools)
+    if (tools.required) {
+      // Some Quick agents answer the visible task without consulting the
+      // per-turn system_prompt. Keep the schema alongside the required task.
+      system.push('Return a client function call for this turn. Follow the wire format in the message for: ' + JSON.stringify([...tools.allowed.keys()]) + '.')
+      prompt += '\n\n' + protocol
+    } else {
+      system.push(protocol)
+    }
+  }
   const title = Array.from(lastUser.trim().replace(/\s+/g, ' ')).slice(0, 64).join('') || 'Magpie'
   return { prompt, systemPrompt: system.join('\n\n'), model: body.model, title, tools }
 }
 
 function asCall(item, tools) {
-  if (!item || !tools.allowed.has(item.name)) return null
-  let args = item.arguments
+  const fn = item?.function ?? item
+  if (!fn || !tools.allowed.has(fn.name)) return null
+  if (item.function && item.type != null && item.type !== 'function') return null
+  let args = fn.arguments
   if (typeof args === 'string') {
     try { args = JSON.parse(args || '{}') } catch { return null }
   }
@@ -112,14 +125,15 @@ function asCall(item, tools) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return null
   return {
     id: typeof item.id === 'string' && item.id ? item.id : 'call_' + randomUUID().replaceAll('-', ''),
-    type: 'function', function: { name: item.name, arguments: JSON.stringify(args) },
+    type: 'function', function: { name: fn.name, arguments: JSON.stringify(args) },
   }
 }
 
-function markerCalls(json, tools) {
+function parseCalls(json, tools, requireArguments = false) {
   let payload
   try { payload = JSON.parse(json) } catch { return null }
   const items = Array.isArray(payload) ? payload : (Array.isArray(payload?.tool_calls) ? payload.tool_calls : [payload])
+  if (requireArguments && items.some(item => (item?.function ?? item)?.arguments === undefined)) return null
   const calls = items.map(item => asCall(item, tools))
   // Keep a marker containing an unknown or malformed tool intact, including mixed arrays.
   return calls.length && calls.every(Boolean) ? calls : null
@@ -128,8 +142,8 @@ function markerCalls(json, tools) {
 export function finishTools(text, nativeEvents, tools) {
   if (!tools.enabled) return { text, toolCalls: [] }
   const toolCalls = []
-  const cleaned = text.replace(/<client_tool_call>([\s\S]*?)<\/client_tool_call>/g, (marker, payload) => {
-    const calls = markerCalls(payload, tools)
+  let cleaned = text.replace(/<client_tool_call>([\s\S]*?)<\/client_tool_call>/g, (marker, payload) => {
+    const calls = parseCalls(payload, tools)
     if (!calls) return marker
     toolCalls.push(...calls)
     return ''
@@ -142,7 +156,14 @@ export function finishTools(text, nativeEvents, tools) {
     }
   }
   if (tools.required && !toolCalls.length) {
-    throw Object.assign(new Error('Amazon Quick did not return a required tool call.'), { status: 502, expose: true })
+    // A forced call can arrive as the entire reply, plain or fenced. Prose
+    // with a JSON example and ordinary auto-mode data stay assistant text.
+    const whole = text.trim()
+    const fence = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(whole)
+    const calls = parseCalls(fence ? fence[1] : whole, tools, true)
+    if (!calls) throw Object.assign(new Error('Amazon Quick did not return a required tool call.'), { status: 502, expose: true })
+    toolCalls.push(...calls)
+    cleaned = ''
   }
   return { text: cleaned === text ? text : cleaned.trim(), toolCalls: tools.parallel ? toolCalls : toolCalls.slice(0, 1) }
 }

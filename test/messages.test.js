@@ -72,3 +72,36 @@ test('honors forced, disabled and sequential tool choices and filters native too
   assert.deepEqual(finishTools('', native, single).toolCalls.map(call => call.id), ['b'])
   assert.throws(() => prepareTurn({ ...basic, tools, tool_choice: { function: { name: 'not-declared' } } }), { status: 400 })
 })
+
+test('required client tools accept a whole plain or fenced JSON call', () => {
+  const audit = { name: 'audit_echo', arguments: { text: 'line 1\n"回声"' } }
+  const registered = [{ type: 'function', function: { name: audit.name } }, ...tools]
+  const chatCall = { id: 'echo-1', type: 'function', function: { name: audit.name, arguments: JSON.stringify(audit.arguments) } }
+  const envelope = JSON.stringify({ tool_calls: [chatCall] })
+  for (const choice of ['required', { type: 'function', function: { name: audit.name } }]) {
+    const config = prepareTurn({ ...basic, tools: registered, tool_choice: choice }).tools
+    for (const text of [JSON.stringify(audit), ['```json', JSON.stringify(audit), '```'].join('\n'), envelope, mark(envelope)]) {
+      const result = finishTools(text, [], config)
+      assert.equal(result.text, '')
+      assert.equal(result.toolCalls.length, 1)
+      assert.deepEqual(result.toolCalls[0].function, chatCall.function)
+    }
+  }
+})
+
+test('bare data stays text in auto mode and cannot satisfy a forced call by implication', () => {
+  const registered = [{ type: 'function', function: { name: 'audit_echo' } }, ...tools]
+  const auto = prepareTurn({ ...basic, tools: registered }).tools
+  const forced = prepareTurn({ ...basic, tools: registered, tool_choice: { function: { name: 'audit_echo' } } }).tools
+  const echo = JSON.stringify({ name: 'audit_echo', arguments: { text: 'test' } })
+  assert.deepEqual(finishTools(echo, [], auto), { text: echo, toolCalls: [] })
+  for (const invalid of [
+    'I cannot call external tools.', 'Example: ' + echo, JSON.stringify({ text: 'test' }),
+    JSON.stringify({ name: 'weather', arguments: {} }),
+    JSON.stringify({ name: 'audit_echo', arguments: 'invalid JSON' }),
+    JSON.stringify({ tool_calls: [{ type: 'function', function: { name: 'audit_echo', arguments: '[]' } }] }),
+  ]) {
+    assert.throws(() => finishTools(invalid, [], forced), { status: 502 })
+    assert.deepEqual(finishTools(invalid, [], auto), { text: invalid, toolCalls: [] })
+  }
+})
