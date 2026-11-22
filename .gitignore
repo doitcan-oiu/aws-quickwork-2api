@@ -1,5 +1,6 @@
 # Runtime secrets and session state
 data/
+!web/src/**/data/
 .env
 *.db
 *.db-shm
