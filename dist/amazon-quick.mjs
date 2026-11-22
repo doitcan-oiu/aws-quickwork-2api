@@ -183,6 +183,7 @@ function discoveryURL(provider, nonce, port, region) {
   const enterpriseHost = (region === "us-east-1" ? "" : region + ".") + "quicksight.aws.amazon.com";
   const url = new URL(provider === "enterprise" ? "https://" + enterpriseHost + "/sn/start/app-integrations/quickwork-enterprise-login" : "https://quick.aws.com/sn");
   url.searchParams.set("qwSurface", "desktop:" + nonce + ":" + port + ":1.2.4660");
+  url.searchParams.set("magpie_callback_port", String(port));
   return url.href;
 }
 async function discover(provider, query, region, redirect, signal) {
@@ -333,7 +334,8 @@ async function signIn(provider, options = {}) {
   return {
     url: discoveryURL(provider, nonce, port, region),
     method: "auto",
-    instructions: "\u5728\u6D4F\u89C8\u5668\u4E2D\u767B\u5F55 Amazon Quick\u3002\u56DE\u8C03\u7AEF\u53E3\u4E3A " + port + "\u3002",
+    opened: true,
+    instructions: "\u590D\u5236\u4E0B\u65B9\u767B\u5F55\u94FE\u63A5\uFF0C\u7528\u4F60\u9009\u62E9\u7684\u6D4F\u89C8\u5668\u6216\u65E0\u75D5\u7A97\u53E3\u6253\u5F00\u3002" + "\u5982\u679C\u56DE\u8C03\u9875\u9762\u6253\u4E0D\u5F00\uFF0C\u628A\u5730\u5740\u680F\u91CC\u7684\u5B8C\u6574\u5730\u5740\u7C98\u8D34\u5230 Magpie \u7684\u56DE\u8C03\u8F93\u5165\u6846\u5E76\u63D0\u4EA4\u3002" + "\u7B49\u94FE\u63A5\u66F4\u65B0\u540E\uFF0C\u590D\u5236\u65B0\u94FE\u63A5\u5230\u540C\u4E00\u4E2A\u6D4F\u89C8\u5668\u7A97\u53E3\u7EE7\u7EED\u6388\u6743\uFF0C\u518D\u7C98\u8D34\u7B2C\u4E8C\u4E2A\u5B8C\u6574\u56DE\u8C03\u5730\u5740\u5E76\u63D0\u4EA4\u3002",
     async callback(_code, context = {}) {
       callbackSignal = context.signal;
       callbackSignal?.addEventListener("abort", abort, { once: true });

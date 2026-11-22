@@ -24,6 +24,9 @@ for (const [i, provider] of ['social', 'enterprise'].entries()) {
     t.after(() => server.abort())
     const flow = await authMethods[i].authorize(undefined, { signal: server.signal })
     const { nonce, port } = readSurface(flow)
+    assert.equal(flow.method, 'auto')
+    assert.equal(flow.opened, true)
+    assert.equal(new URL(flow.url).searchParams.get('magpie_callback_port'), port)
     const redirect = 'http://' + (provider === 'social' ? '127.0.0.1:' : 'localhost:') + port
     t.mock.method(globalThis, 'fetch', async (endpoint, init) => {
       assert.equal(init.redirect, 'error')
@@ -66,6 +69,8 @@ for (const [i, provider] of ['social', 'enterprise'].entries()) {
     const approval = await sendCallback(port, '/callback', discovery)
     assert.equal(approval.status, 302)
     const authURL = new URL(approval.headers.get('location'))
+    assert.equal(authURL.protocol, 'https:')
+    assert.equal(authURL.searchParams.get('redirect_uri'), redirect)
     assert.equal(authURL.searchParams.get('code_challenge_method'), 'S256')
     assert.equal((await sendCallback(port, '/callback', discovery)).headers.get('location'), authURL.href)
     assert.equal((await sendCallback(port, '/', { code: 'test-code', state: 'wrong' })).status, 400)

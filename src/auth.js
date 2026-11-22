@@ -162,6 +162,9 @@ function discoveryURL(provider, nonce, port, region) {
     ? 'https://' + enterpriseHost + '/sn/start/app-integrations/quickwork-enterprise-login'
     : 'https://quick.aws.com/sn')
   url.searchParams.set('qwSurface', 'desktop:' + nonce + ':' + port + ':1.2.4660')
+  // Magpie finds loopback callbacks by URL or a named port in the query.
+  // Quick reads its port from qwSurface, which Magpie can't parse.
+  url.searchParams.set('magpie_callback_port', String(port))
   return url.href
 }
 
@@ -288,7 +291,12 @@ async function signIn(provider, options = {}) {
   if (options.signal?.aborted) abort()
   return {
     url: discoveryURL(provider, nonce, port, region),
-    method: 'auto', instructions: '在浏览器中登录 Amazon Quick。回调端口为 ' + port + '。',
+    method: 'auto',
+    // Magpie leaves opening the URL to the user when the plugin handles it.
+    opened: true,
+    instructions: '复制下方登录链接，用你选择的浏览器或无痕窗口打开。' +
+      '如果回调页面打不开，把地址栏里的完整地址粘贴到 Magpie 的回调输入框并提交。' +
+      '等链接更新后，复制新链接到同一个浏览器窗口继续授权，再粘贴第二个完整回调地址并提交。',
     async callback(_code, context = {}) {
       callbackSignal = context.signal
       callbackSignal?.addEventListener('abort', abort, { once: true })
