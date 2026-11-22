@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { AmazonQuickPlugin } from '../index.js'
 import { createChatFetch } from '../src/chat.js'
+import { defaultOptions, readOptions } from '../src/options.js'
 import { accountUsage, recordTurn } from '../src/usage.js'
 
 const baseURL = 'https://amazon-quick.invalid/v1'
@@ -29,6 +30,27 @@ test('register provider, account hooks and four text models', async () => {
   assert.deepEqual(hooks.auth.methods.map(method => method.type), ['oauth', 'oauth'])
   assert.equal(typeof hooks.auth.refresh, 'function')
   assert.equal(typeof hooks.auth.usage, 'function')
+})
+
+test('existing settings inherit client defaults and ignore unrelated Magpie options', () => {
+  const previous = { monthlyHours: 7.5, transport: 'gateway', unrelated: { enabled: true } }
+  assert.deepEqual(readOptions(previous), { ...defaultOptions, monthlyHours: 7.5, transport: 'gateway' })
+  const edited = readOptions({ appVersion: ' 1.7.1234-beta.1 ', locale: 'zh-tw', region: '', timezone: 'Asia/Taipei' })
+  assert.equal(edited.appVersion, '1.7.1234-beta.1')
+  assert.equal(edited.locale, 'zh-TW')
+  assert.equal(edited.region, '')
+})
+
+test('invalid saved client metadata fails before opening a connection', async () => {
+  const invalid = [
+    ['appVersion', '2.5:fake-port'], ['surface', 'surface\r\nextra:header'],
+    ['workingSessionId', 'id\nsecret'], ['region', 'us-east-1.example.com'],
+    ['timezone', 'Nowhere/Invalid'], ['locale', 'zh_TW'], ['requestTimeoutSeconds', 2_147_484],
+    ['thinkingEffort', 'other'], ['keepSessions', 'false'],
+  ]
+  for (const [key, value] of invalid) {
+    await assert.rejects(AmazonQuickPlugin({ client: {} }, { [key]: value }), e => e.field === key)
+  }
 })
 
 test('JSON and SSE report the same content and aggregate per-step cache usage', async () => {

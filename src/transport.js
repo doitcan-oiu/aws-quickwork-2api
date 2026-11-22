@@ -2,17 +2,16 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter, on } from 'node:events'
 import WebSocket from 'ws'
 import { isQuickHost } from './auth.js'
+import { defaultOptions } from './options.js'
 import { decodeQuickFrame, encodeQuickFrame, quickError, upstreamFailure } from './wire.js'
 
-const appVersion = '1.2.4660'
-const surface = 'QUICK_WORK_DESKTOP_WINDOWS'
 const aidpPath = '/streaming/quickwork-chat-bidirectional-stream'
 const gatewayPath = '/ws/service/SpaceNeedleConversationService/operation/ChatBidirectionalStream'
 const terminal = new Set(['turn_completed', 'turn_ended', 'stream_ended', 'chat_complete'])
 const toolEvents = new Set(['tool_start', 'tool_arguments', 'tool_arguments_edited', 'tool_progress',
   'tool_result', 'tool_error', 'tool_complete', 'tool_call', 'tool_call_update'])
 
-function destination(session, gateway) {
+function destination(session, gateway, { surface, outpostId, workingSessionId }) {
   const host = session.wsHost
   const path = gateway ? gatewayPath : aidpPath
   if (typeof host !== 'string' || !/^[a-z0-9.-]+$/.test(host) || !isQuickHost(host) || (session.wsPath && session.wsPath !== path)) {
@@ -25,6 +24,8 @@ function destination(session, gateway) {
   const url = new URL('wss://' + host + path)
   if (!gateway) {
     url.searchParams.set('surfaceType', surface)
+    if (outpostId) url.searchParams.set('outpostId', outpostId)
+    if (workingSessionId) url.searchParams.set('workingSessionId', workingSessionId)
     if (session.provider === 'social') url.searchParams.set('token', session.jwt)
   }
   return url
@@ -66,17 +67,23 @@ function stamp() {
 }
 
 export async function* streamQuick(session, input, signal, connect = (url, options) => new WebSocket(url, options)) {
-  if (signal?.aborted) throw quickError('Amazon Quick request canceled', 499)
+  const abortError = () => signal.reason?.name === 'TimeoutError'
+    ? quickError('Amazon Quick request timed out', 504)
+    : quickError('Amazon Quick request canceled', 499)
+  if (signal?.aborted) throw abortError()
   if (!input.prompt?.trim()) throw quickError('Quick requires a non-empty message', 400)
   const gateway = session.provider === 'gateway' || session.provider === 'social_gateway'
-  const url = destination(session, gateway)
+  const options = input.clientOptions ?? defaultOptions
+  const { appVersion, surface, outpostId, workingSessionId } = options
+  const url = destination(session, gateway, options)
   const thread = input.threadId || randomUUID()
   const title = input.title || Array.from(input.prompt.replace(/\s+/g, ' ').trim()).slice(0, 60).join('')
   let socket
   try {
     socket = connect(url, {
       headers: { Authorization: 'Bearer ' + session.jwt, Origin: 'file://', 'X-Surface-Type': surface,
-        'X-Outpost-Id': '', 'X-Agent-Service-Type': 'UNIFIED_QUICK' },
+        'X-Outpost-Id': outpostId, 'X-Agent-Service-Type': 'UNIFIED_QUICK',
+        ...(workingSessionId ? { 'X-Working-Session-Id': workingSessionId } : {}) },
       followRedirects: false, handshakeTimeout: 20_000, maxPayload: 16 * 1024 * 1024,
     })
   } catch {
@@ -90,7 +97,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
   function closeConnection() {
     if (socket.readyState === WebSocket.OPEN) {
       try {
-        if (started) send('session_delete', { session_id: thread })
+        if (started && !options.keepSessions) send('session_delete', { session_id: thread })
         socket.close()
       } catch { socket.terminate() }
     } else if (socket.readyState === WebSocket.CONNECTING) socket.terminate()
@@ -107,7 +114,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
   })
   socket.once('close', (code) => push({ kind: 'closed', code }))
   function abort() {
-    push({ error: quickError('Amazon Quick request canceled', 499) })
+    push({ error: abortError() })
     closeConnection()
   }
   signal?.addEventListener('abort', abort, { once: true })
@@ -115,7 +122,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
   const deadline = setTimeout(() => {
     push({ error: quickError('Amazon Quick request timed out', 504) })
     closeConnection()
-  }, 300_000)
+  }, options.requestTimeoutSeconds * 1000)
   const keepalive = setInterval(() => {
     if (socket.readyState === WebSocket.OPEN) {
       try { socket.ping() } catch { push({ error: quickError('Amazon Quick connection lost') }) }
@@ -129,24 +136,25 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
   let sawUsage = false, completeUsage = true, reportedMs = 0
   try {
     loop: for await (const [packet] of packets) {
-      if (signal?.aborted) throw quickError('Amazon Quick request canceled', 499)
+      if (signal?.aborted) throw abortError()
       if (packet.error) throw packet.error
       if (packet.kind === 'open') {
         if (gateway) {
-          socket.send(encodeQuickFrame({ type: 'session_connect', session_id: '' }, true), { binary: true })
+          socket.send(encodeQuickFrame({ type: 'session_connect', session_id: outpostId }, true), { binary: true })
         } else {
-          send('session_connect', { actor_id: session.actorArn || '', surfaceType: surface, outpostId: '',
+          send('session_connect', { actor_id: session.actorArn || '', surfaceType: surface, outpostId,
             appVersion, external_agent_sign_in: 1, recents_promotion: 1 })
         }
         send('federate_status', {})
         send('session_create', { session_id: thread, title })
         send('user_message', {
           text: input.prompt, send_origin: 'programmatic', had_physical_input: false,
-          surfaceType: surface, outpostId: '', appVersion, traceId: randomUUID(),
+          surfaceType: surface, outpostId, appVersion, traceId: randomUUID(),
           message_id: randomUUID(), thread_id: thread, agent_mode: input.model || 'smart',
-          user_timezone: 'UTC', user_locale: 'en-US', chat_agent_id: null, auto_routing: false,
+          user_timezone: options.timezone, user_locale: options.locale, chat_agent_id: null, auto_routing: false,
           web_search_enabled: false, pre_approved_tools: [], preload_skills: [], panel_edits: [],
           custom_prompt: null, ...(input.systemPrompt ? { system_prompt: input.systemPrompt } : {}),
+          ...(options.thinkingEffort !== 'off' ? { thinking_effort: options.thinkingEffort } : {}),
         })
         started = stamp()
         idleTimer = setTimeout(() => push({ kind: 'idle' }), 120_000)
@@ -162,7 +170,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
         throw quickError('Amazon Quick closed the connection (' + packet.code + ')')
       }
       for (const event of decodeQuickFrame(packet.data, packet.binary, gateway)) {
-        if (signal?.aborted) throw quickError('Amazon Quick request canceled', 499)
+        if (signal?.aborted) throw abortError()
         const type = event?.type
         const p = event?.payload ?? {}
         if (type === 'text_delta' || type === 'text_complete') {
@@ -212,7 +220,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
       }
     }
     for (const tool of tools.values()) {
-      if (signal?.aborted) throw quickError('Amazon Quick request canceled', 499)
+      if (signal?.aborted) throw abortError()
       if (tool.name) yield { ...tool, arguments: tool.arguments || '{}' }
     }
   } catch (error) {

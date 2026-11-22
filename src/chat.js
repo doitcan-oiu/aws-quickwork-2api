@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { prepareTurn, finishTools } from './messages.js'
+import { defaultOptions } from './options.js'
 import { streamQuick } from './transport.js'
 
 function badRequest(message, status = 400) {
@@ -107,7 +108,7 @@ function asStream(iterator, first, base, includeUsage, controller) {
   return new Response(body, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } })
 }
 
-export function createChatFetch({ baseURL, models, session, record, stream = streamQuick }) {
+export function createChatFetch({ baseURL, models, session, record, stream = streamQuick, clientOptions = defaultOptions }) {
   return async (url, init) => {
     const request = new Request(url, init)
     let signal = request.signal
@@ -120,13 +121,13 @@ export function createChatFetch({ baseURL, models, session, record, stream = str
       if (body.n != null && body.n !== 1) throw badRequest('Amazon Quick accepts one completion per request')
       const turn = prepareTurn(body)
       const controller = new AbortController()
-      signal = AbortSignal.any([request.signal, controller.signal, AbortSignal.timeout(300_000)])
+      signal = AbortSignal.any([request.signal, controller.signal, AbortSignal.timeout(clientOptions.requestTimeoutSeconds * 1000)])
       signal.throwIfAborted()
       let account
       try { account = await session() }
       catch (err) { throw Object.assign(new Error('Account unavailable'), { status: err?.status || 401 }) }
       signal.throwIfAborted()
-      const events = stream(account, { ...turn, onTiming: timing => record(account.accountId, timing) }, signal)
+      const events = stream(account, { ...turn, clientOptions, onTiming: timing => record(account.accountId, timing) }, signal)
       const parts = updates(turn, events)
       const base = { id: 'chatcmpl-' + randomUUID(), created: Math.floor(Date.now() / 1000), model: body.model }
       if (!body.stream) return await asJSON(parts, base)

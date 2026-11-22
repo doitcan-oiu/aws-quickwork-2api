@@ -33,13 +33,29 @@ magpie quota                          # 查看账号用量
 
 Magpie 的用量卡显示每个账号的「本月剩余」。默认预算为 10 小时，按 UTC 自然月更新，只统计通过此插件的回合。同一轮的用量事件均带 `duration_ms` 时使用上游时长，其余按发送消息至最后输出或完成事件的时间计量。Amazon 的计费还涉及模式和并行任务，官方余额可在 Quick 的 Mission Control 查看。
 
-插件在 Magpie 配置目录的 `amazon-quick/usage.sqlite` 中按账号保存月度时长。在「设置 → 插件 → Amazon Quick」可修改每个账号使用的月度额度（小时）和连接方式，点「保存」后生效。默认连接方式为 AIDP，也可选择 Quick Gateway。
+插件在 Magpie 配置目录的 `amazon-quick/usage.sqlite` 中按账号保存月度时长。
 
-企业账号默认使用 `us-east-1` 发起登录。其他区域可在启动 Magpie 前设置 `AMAZON_QUICK_REGION`。企业自有身份服务可将准确主机名写入 `AMAZON_QUICK_IDP_HOSTS`，多个以逗号分隔。
+## 插件设置
+
+打开「设置 → 插件 → Amazon Quick」，可以直接修改 **Quick App 版本号**、每账号月度额度和连接方式。App 版本默认是 `1.2.4660`。保存后，之后的 AWS 登录链接和对话都会使用新值，已有账号无需重新登录。默认连接方式为 AIDP，也可选择 Quick Gateway。
+
+展开「高级设置」还可以调整：
+
+| 设置 | 默认行为 |
+| --- | --- |
+| AWS 登录区域 | 留空时使用服务器的 `AMAZON_QUICK_REGION`，未配置时使用 `us-east-1`。个人账号优先采用 AWS 登录过程中返回的区域。 |
+| 对话时区、语言 | `UTC`、`en-US`。例如可填 `Asia/Taipei` 和 `zh-TW`。时区仅用于发给 Quick 的消息，月度统计仍按 UTC 归集。 |
+| 思考强度 | 跟随上游，也可选择低、中或高。 |
+| 请求超时 | 默认每次聊天最多 300 秒。 |
+| 客户端标识（Surface） | `QUICK_WORK_DESKTOP_WINDOWS`。 |
+| Outpost ID、Working Session ID | 默认留空，需要时填写部署所用的标识。 |
+| 保留上游会话 | 默认在回合结束后清理，勾选后保留。 |
+
+以上设置对这个插件的所有账号生效。企业自有身份服务的受信任主机名由服务器环境变量 `AMAZON_QUICK_IDP_HOSTS` 指定，多个主机名以逗号分隔。
 
 ## 开发
 
-源码入口为 `index.js`，Magpie 从 `dist/amazon-quick.mjs` 加载发行文件。修改源码后，用 Bun 重新构建并提交发行文件。测试使用 Node.js 24 和本机模拟服务。
+源码入口为 `index.js`，设置面板脚本的源码为 `src/settings-panel.js`。修改后用 Bun 重新构建，并提交生成的 `dist/amazon-quick.mjs` 和 `settings/settings.js`。测试使用 Node.js 24 和本机模拟服务。
 
 ```sh
 bun install --frozen-lockfile

@@ -6,9 +6,112 @@ import { join as join2 } from "path";
 // src/auth.js
 import { createHash, randomBytes } from "crypto";
 import { createServer } from "http";
+// package.json
+var package_default = {
+  name: "magpie-amazon-quick",
+  version: "1.2.0",
+  description: "Amazon Quick subscription provider for Magpie",
+  magpie: {
+    icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHN0eWxlPnBhdGh7ZmlsbDojMWMxYzFlfUBtZWRpYSAocHJlZmVycy1jb2xvci1zY2hlbWU6ZGFyayl7cGF0aHtmaWxsOiNmMmYyZjJ9fTwvc3R5bGU+PHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMS41IDUuNUMxLjMgNS43IDEuMiA2LjUgMS4yIDYuOUMxLjIgNi45IDEuMiA3IDEuMiA3LjFDMS4xIDcuNCAxLjMgOCAxLjQgOC4zQzEuNCA4LjQgMS41IDguNSAxLjUgOC43QzEuNSA4LjkgMS43IDkgMS44IDkuM0MyLjIgOS45IDIuMiAxMCAyLjMgMTAuMUMyLjQgMTAuMiAyLjUgMTAuMyAyLjYgMTAuNUMyLjggMTAuOCAzIDExLjEgMy4yIDExLjNDMy4zIDExLjMgMy40IDExLjYgMy42IDExLjhDMy44IDEyIDQuMSAxMi40IDQuMiAxMi41QzQuNyAxMyA1LjIgMTMuNyA1LjQgMTMuOUM2IDE0LjUgNi41IDE1LjEgNi43IDE1LjNDNi43IDE1LjQgNi45IDE1LjUgNi45IDE1LjdDNy4zIDE1LjkgNy43IDE2LjUgNy45IDE2LjhDNy45IDE2LjggOCAxNi45IDggMTYuOUM4LjEgMTYuOSA4LjIgMTcuMiA4LjIgMTcuM0M4LjIgMTcuMyA4LjEgMTcuMiA4LjEgMTcuMUM3LjkgMTYuOSA3LjkgMTYuOSA3LjYgMTYuNkM3LjUgMTYuNSA3LjQgMTYuNSA3LjQgMTYuM0M3LjIgMTYuMiA2LjcgMTUuNyA2LjMgMTUuMkM2LjEgMTUuMSA2IDE0LjkgNiAxNC45QzUuOSAxNC44IDUuNyAxNC43IDUuNyAxNC42QzUuNiAxNC41IDUuNCAxNC4zIDUuMyAxNC4yQzUuMSAxNC4xIDQuOSAxMy44IDQuNyAxMy41QzQuNSAxMy4zIDQuMiAxMy4xIDQuMSAxMi45QzQuMSAxMi45IDMuOCAxMi43IDMuOCAxMi41QzMuNSAxMi4zIDMgMTEuOCAyLjggMTEuNEMxLjggMTAuNSAwLjkgOS42IDAuNyA5LjZDMC42IDkuNyAwLjYgOS44IDAuNSAxMEMwLjUgMTAuMSAwLjYgMTAuMiAwLjUgMTAuM0MwLjUgMTAuNCAwLjYgMTAuNSAwLjYgMTAuNkMwLjUgMTAuNyAwLjUgMTAuOSAwLjYgMTFDMC41IDExLjEgMC42IDExLjQgMC42IDExLjVDMC45IDEyLjkgMS4zIDEzLjggMi44IDE0LjlDMi45IDE1LjEgMy4zIDE1LjMgMy40IDE1LjRDMy40IDE1LjUgMy42IDE1LjYgMy43IDE1LjdDNC4yIDE2IDYuNCAxNy44IDcgMTguNEM3LjQgMTguOCA3LjQgMTguOCA3LjUgMTguOUM3LjYgMTkgNy43IDE5IDcuNyAxOS4xQzcuNyAxOS4yIDcuOCAxOS4yIDcuOSAxOS4yQzcuOSAxOS4zIDguMSAxOS40IDguMSAxOS41QzguMiAxOS42IDguMiAxOS43IDguMyAxOS43QzguMyAxOS43IDguMyAxOS43IDguMiAxOS43QzguMiAxOS42IDguMSAxOS42IDggMTkuNkM3LjkgMTkuNSA3LjkgMTkuNCA3LjggMTkuNEM3LjcgMTkuMyA3LjYgMTkuMiA3LjYgMTkuMkM3LjYgMTkuMSA3LjUgMTkgNy4zIDE4LjlDNy4yIDE4LjkgNi45IDE4LjYgNi43IDE4LjRDNi4xIDE3LjggNC41IDE2LjYgMy41IDE2QzMuNCAxNS44IDMgMTUuNiAyLjkgMTUuNUMyLjYgMTUuMyAxLjUgMTQuNiAwLjkgMTQuM0MwLjcgMTQuMSAwLjYgMTQuMSAwLjYgMTQuMkMwLjUgMTQuNSAwLjggMTUuOSAwLjkgMTYuMUMwLjkgMTYuMiAxIDE2LjIgMC45IDE2LjNDMS4yIDE2LjggMS45IDE3LjYgMi43IDE4LjNDMi44IDE4LjUgNCAxOS4yIDQuNyAxOS41QzYuMiAyMC41IDYuNiAyMC43IDcuNCAyMS41QzguMiAyMi4yIDguNyAyMi43IDkuMyAyMy42QzkuNSAyNC4xIDkuOSAyNC40IDEwLjMgMjUuM0MxMC40IDI1LjUgMTAuNSAyNS44IDEwLjUgMjUuOEMxMC43IDI1LjggMTAuOCAyNS43IDExIDI1LjRDMTEuNiAyNSAxMS45IDI0LjYgMTIuMyAyNC4zQzEyLjggMjQgMTMgMjMuOCAxMyAyMy43QzEzLjEgMjMuNyAxMy4xIDIzLjggMTMgMjRDMTIgMjQuOCAxMSAyNiAxMC4yIDI2LjlDMTAuMSAyNy4xIDkuOSAyNy41IDkuNyAyNy43QzkuNSAyNy44IDkuNCAyOCA5LjQgMjhDOS40IDI4IDkuMyAyOC4zIDkuMSAyOC41QzguNiAyOS4yIDcuNyAzMC44IDcuNyAzMC45QzcuNyAzMSA3LjggMzEgOC4zIDMwLjhDOSAzMC40IDkuNSAzMC4yIDEwLjQgMzBDMTEuNyAyOS42IDEyLjUgMjkuNiAxMS42IDMwQzEwLjUgMzAuMiA5LjcgMzAuNiA5LjIgMzEuMkM4LjggMzEuNyA4LjggMzEuNyA5LjMgMzEuN0MxMC4xIDMxLjggMTAuOSAzMS45IDExLjYgMzIuMkMxMi44IDMyLjcgMTMuNSAzMy4xIDE1LjUgMzQuOEMxNi40IDM1LjUgMTcuMyAzNi4yIDE3LjggMzYuNEMxNy45IDM2LjUgMTguMSAzNi43IDE4LjIgMzYuOEMxOS4xIDM3LjMgMjEuMiAzOC4xIDIyLjMgMzguM0MyMi40IDM4LjMgMjIuNyAzOC4zIDIyLjggMzguM0MyMi44IDM4LjUgMjMgMzguNSAyMyAzOC41QzIzLjEgMzguNSAyMy4yIDM4LjUgMjMuMyAzOC41QzIzLjYgMzguNiAyNS45IDM4LjYgMjYuMSAzOC41QzI2LjIgMzguNSAyNi4zIDM4LjUgMjYuNCAzOC41QzI2LjUgMzguNSAyNi42IDM4LjUgMjYuNyAzOC4zQzI2LjcgMzguMyAyNyAzOC4zIDI3LjEgMzguM0MyOC4zIDM4LjEgMzAuMiAzNy4zIDMxLjQgMzYuN0MzMS41IDM2LjcgMzEuNyAzNi40IDMxLjggMzYuNEMzMi4yIDM2LjIgMzMuMiAzNS40IDMzLjQgMzUuMkMzNC4yIDM0LjUgMzUuNSAzMyAzNS44IDMyLjZDMzUuOCAzMi41IDM2IDMyLjIgMzYuMSAzMkMzNi40IDMxLjggMzYuNiAzMS40IDM2LjYgMzEuMkMzNi43IDMxLjEgMzYuOCAzMC45IDM2LjkgMzAuOEMzNy4yIDMwLjQgMzcuNSAyOS42IDM3LjcgMjkuMkMzNy43IDI5LjEgMzcuOCAyOC43IDM3LjkgMjguN0MzOC4xIDI4LjUgMzguNCAyNy4xIDM4LjUgMjYuOEMzOSAyNS4yIDM5LjEgMjMuNyAzOSAyMi40QzM5IDIyLjIgMzguOSAyMS45IDM4LjkgMjEuOEMzOC45IDIxLjcgMzguOSAyMS42IDM4LjkgMjEuNEMzOC42IDIwLjUgMzguNSAxOS45IDM4LjIgMTlDMzcuOSAxOC41IDM3LjUgMTcuNSAzNy4zIDE3LjJDMzcgMTYuOCAzNi44IDE1LjggMzYuOCAxNS4yQzM2LjggMTMuOCAzNy43IDEyLjcgMzkuNiAxMi4yQzQwLjEgMTIuMSA0MS4zIDExLjggNDIuMSAxMS43QzQzLjUgMTEuNSA0My41IDExLjUgNDMuNCAxMS4zQzQyLjkgMTAuNyA0MC45IDkuOSAzOS4yIDkuN0MzNy45IDkuNSAzOC4xIDkuNSAzNy42IDlDMzcgOC42IDM2LjQgOCAzNiA3LjlDMzYgNy44IDM1LjggNy44IDM1LjcgNy43QzM1LjEgNy4zIDM0LjIgNyAzMy4xIDYuOUMzMi42IDYuNyAzMS42IDYuOSAzMSA3QzI5LjYgNy4zIDI4LjMgOCAyNy4zIDkuMkMyNi43IDkuOCAyNi4yIDEwLjggMjUuNyAxMS43QzI1LjUgMTIuMSAyNC44IDEzLjQgMjQuNyAxMy43QzI0LjYgMTMuOSAyNC41IDE0LjEgMjQuMSAxNC43QzIzLjUgMTUuNyAyMi4xIDE2LjkgMjAuNiAxNy44QzIwLjUgMTggMjAuMyAxOC4yIDIwLjEgMTguM0MxOS43IDE4LjUgMTkuNCAxOC44IDE5LjEgMTlDMTguOSAxOS4xIDE4LjcgMTkuMyAxOC41IDE5LjRDMTggMTkuOCAxNy4yIDIwLjMgMTcgMjAuNUMxNi45IDIwLjUgMTYuOCAyMC42IDE2LjcgMjAuN0MxNi4zIDIwLjggMTYuMSAyMC45IDE2IDIwLjlDMTUuNSAyMC44IDE0LjkgMjAuNSAxNC4yIDIwLjJDMTMuNyAxOS44IDEyLjcgMTguOSAxMi40IDE4LjZDMTIuMyAxOC41IDEyLjIgMTguNCAxMi4xIDE4LjJDMTEuOSAxOCAxMS4yIDE3LjEgMTEgMTYuNkMxMC45IDE2LjUgMTAuOCAxNi40IDEwLjcgMTYuM0MxMC43IDE2LjIgMTAuNiAxNi4xIDEwLjYgMTUuOUMxMC41IDE1LjkgMTAuNCAxNS43IDEwLjQgMTUuNkMxMC4zIDE1LjUgMTAuMiAxNS4yIDEwLjEgMTVDMTAgMTQuOCA5LjggMTQuNCA5LjcgMTQuMkM5LjYgMTQgOS41IDEzLjcgOS40IDEzLjZDOS40IDEzLjQgOS4zIDEzLjIgOS4yIDEzQzkuMiAxMi44IDkgMTIuNiA5IDEyLjVDOC45IDEyLjMgOC43IDEyLjEgOC43IDEyQzguNyAxMiA4LjUgMTEuNyA4LjUgMTEuN0M4LjMgMTEuMiA4LjIgMTAuOSA3LjUgMTBDNi40IDguMyA0LjIgNi40IDIuNyA1LjhDMiA1LjUgMS42IDUuNCAxLjUgNS41Wk0yOC40IDE2LjdDMjkuMiAxNi45IDI5LjcgMTcuMiAyOS45IDE3LjdDMzAuMSAxOC4yIDMwIDE4LjkgMjkuNiAxOS40QzI5LjIgMTkuOSAyOC4yIDIwLjkgMjcuNiAyMS4yQzI2LjggMjEuNyAyNS4zIDIyLjQgMjQuMiAyMi43QzIzLjkgMjIuOCAyMy42IDIyLjkgMjMuNSAyMi45QzIyLjggMjMuMiAyMC43IDIzLjcgMTkuNiAyNEMxOSAyNC4yIDE4LjQgMjQuMyAxOC4xIDI0LjRDMTcuOSAyNC40IDE2LjEgMjQuOSAxNS4zIDI1LjFDMTQuNiAyNS4yIDE0LjcgMjUuMSAxNS43IDIzLjZDMTYuNCAyMi43IDE4LjUgMjAuNiAxOS40IDE5LjlDMjAuOCAxOC44IDIxLjQgMTguNCAyMy4yIDE3LjZDMjMuOCAxNy40IDI1LjYgMTYuOCAyNS45IDE2LjhDMjUuOSAxNi44IDI2LjMgMTYuOCAyNi42IDE2LjdDMjYuOCAxNi43IDI4LjIgMTYuNyAyOC40IDE2LjdaTTMwLjQgMjAuMkMzMC41IDIwLjMgMzAuNiAyMC42IDMwLjYgMjAuN0MzMS43IDIzLjEgMzMuNCAyNC42IDM1LjYgMjUuM0MzNi4xIDI1LjUgMzYuNyAyNS43IDM3LjIgMjUuOEMzNy43IDI1LjggMzcuOCAyNS45IDM3LjggMjYuMUMzNy43IDI2LjIgMzcuNyAyNi4zIDM3LjcgMjYuNUMzNy43IDI2LjYgMzcuNyAyNi44IDM3LjYgMjdDMzcuNCAyOC41IDM2LjggMjkuOSAzNi4xIDMxQzM2LjEgMzEuMiAzNS45IDMxLjQgMzUuOSAzMS42QzM1LjcgMzEuOSAzNS4yIDMyLjYgMzQuNyAzMy4zQzMyLjYgMzUuNiAyOS43IDM3LjMgMjYuNiAzNy44QzI2LjUgMzcuOCAyNi4zIDM3LjkgMjYuMiAzNy45QzI1LjggMzcuOSAyMy43IDM3LjkgMjMuMyAzNy45QzIzLjIgMzcuOSAyMyAzNy44IDIyLjkgMzcuOEMyMS4xIDM3LjYgMTkuMyAzNi44IDE4IDM1LjdDMTcuNyAzNS40IDE3IDM0LjcgMTYuOCAzNC41QzE2LjMgMzMuOCAxNi4xIDMzIDE2LjMgMzIuNUMxNi41IDMxLjggMTYuOCAzMS42IDE3LjkgMzEuMUMxOS4xIDMwLjUgMTkuNCAzMC40IDIwLjIgMzBDMjEuNCAyOS40IDIzLjIgMjguNCAyMy45IDI3LjlDMjMuOSAyNy44IDI0LjIgMjcuNyAyNC41IDI3LjZDMjYuMyAyNi4zIDI4IDI0LjYgMjguOSAyMi45QzI5LjUgMjIuMiAyOS43IDIxLjYgMjkuOSAyMC43QzMwLjEgMjAgMzAuMiAxOS45IDMwLjQgMjAuMloiLz48L3N2Zz4K",
+    panels: [
+      {
+        slot: "settings",
+        file: "settings/index.html",
+        title: "Amazon Quick"
+      }
+    ],
+    options: {
+      monthlyHours: 10,
+      transport: "aidp",
+      appVersion: "1.2.4660",
+      region: "",
+      timezone: "UTC",
+      locale: "en-US",
+      surface: "QUICK_WORK_DESKTOP_WINDOWS",
+      requestTimeoutSeconds: 300,
+      thinkingEffort: "off",
+      keepSessions: false,
+      outpostId: "",
+      workingSessionId: ""
+    }
+  },
+  type: "module",
+  main: "./dist/amazon-quick.mjs",
+  exports: {
+    ".": "./dist/amazon-quick.mjs"
+  },
+  files: [
+    "dist",
+    "index.js",
+    "src",
+    "settings",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES"
+  ],
+  license: "GPL-3.0-only",
+  scripts: {
+    build: "bun build index.js --target=bun --format=esm --outfile=dist/amazon-quick.mjs && bun build src/settings-panel.js --target=browser --format=iife --outfile=settings/settings.js",
+    test: "node --test test/*.test.js"
+  },
+  devDependencies: {
+    cborg: "7.0.0",
+    ws: "8.23.0"
+  }
+};
+
+// src/options.js
+var defaultOptions = Object.freeze(package_default.magpie.options);
+var regionPattern = /^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$/;
+var versionPattern = /^\d+(?:\.\d+){1,3}(?:-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?$/;
+function invalid(field, message) {
+  throw Object.assign(new TypeError(message), { field });
+}
+function readOptions(options = {}) {
+  const values = {};
+  for (const [field, fallback] of Object.entries(defaultOptions)) {
+    const value = options[field] ?? fallback;
+    if (typeof value !== typeof fallback)
+      invalid(field, field + " \u7684\u503C\u7C7B\u578B\u4E0D\u6B63\u786E\u3002");
+    values[field] = typeof value === "string" ? value.trim() : value;
+  }
+  if (!Number.isFinite(values.monthlyHours * 3600000) || values.monthlyHours <= 0) {
+    invalid("monthlyHours", "\u8BF7\u8F93\u5165\u5927\u4E8E 0 \u7684\u6709\u6548\u5C0F\u65F6\u6570\u3002");
+  }
+  if (!["aidp", "gateway"].includes(values.transport))
+    invalid("transport", "\u8BF7\u9009\u62E9 AIDP \u6216 Quick Gateway\u3002");
+  if (values.appVersion.length > 64 || !versionPattern.test(values.appVersion)) {
+    invalid("appVersion", "\u8BF7\u8F93\u5165 Quick App \u7248\u672C\u53F7\uFF0C\u4F8B\u5982 1.2.4660\u3002");
+  }
+  if (values.region && !regionPattern.test(values.region))
+    invalid("region", "\u8BF7\u8F93\u5165 AWS \u533A\u57DF\u4EE3\u7801\uFF0C\u4F8B\u5982 us-east-1\u3002");
+  if (!/^[A-Za-z0-9._-]+$/.test(values.surface))
+    invalid("surface", "\u5BA2\u6237\u7AEF\u6807\u8BC6\u53EF\u4F7F\u7528\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u70B9\u3001\u4E0B\u5212\u7EBF\u548C\u8FDE\u5B57\u7B26\u3002");
+  for (const key of ["outpostId", "workingSessionId"]) {
+    if (!/^[\x21-\x7e]*$/.test(values[key]))
+      invalid(key, "\u6B64\u6807\u8BC6\u53EA\u80FD\u5305\u542B\u4E0D\u5E26\u7A7A\u683C\u7684 ASCII \u53EF\u89C1\u5B57\u7B26\u3002");
+  }
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: values.timezone });
+  } catch {
+    invalid("timezone", "\u8BF7\u8F93\u5165\u6709\u6548\u65F6\u533A\uFF0C\u4F8B\u5982 Asia/Taipei\u3002");
+  }
+  try {
+    values.locale = Intl.getCanonicalLocales(values.locale)[0];
+  } catch {
+    invalid("locale", "\u8BF7\u8F93\u5165\u6709\u6548\u8BED\u8A00\u6807\u7B7E\uFF0C\u4F8B\u5982 zh-TW\u3002");
+  }
+  if (!["off", "low", "medium", "high"].includes(values.thinkingEffort))
+    invalid("thinkingEffort", "\u8BF7\u9009\u62E9\u6709\u6548\u7684\u601D\u8003\u5F3A\u5EA6\u3002");
+  if (!Number.isSafeInteger(values.requestTimeoutSeconds) || values.requestTimeoutSeconds < 1 || values.requestTimeoutSeconds > 2147483) {
+    invalid("requestTimeoutSeconds", "\u8BF7\u6C42\u8D85\u65F6\u987B\u4E3A 1 \u81F3 2147483 \u79D2\u7684\u6574\u6570\u3002");
+  }
+  return values;
+}
+
+// src/auth.js
 var dataPlane = "https://cell001.dp.appintegrations.us-east-1.prod.plato.ai.aws.dev";
 var scopes = ["quicksight:read_write"];
-var regionPattern = /^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$/;
 var refreshing = new Map;
 function isQuickHost(host) {
   return ["quick.aws.com", "quicksight.aws.amazon.com", "plato.ai.aws.dev", "quicksuite.aws.dev"].some((domain) => host === domain || host.endsWith("." + domain));
@@ -179,10 +282,10 @@ async function refreshAuth(auth) {
   }
   return tokenRecord(meta, await exchange(meta, {}));
 }
-function discoveryURL(provider, nonce, port, region) {
+function discoveryURL(provider, nonce, port, region, appVersion) {
   const enterpriseHost = (region === "us-east-1" ? "" : region + ".") + "quicksight.aws.amazon.com";
   const url = new URL(provider === "enterprise" ? "https://" + enterpriseHost + "/sn/start/app-integrations/quickwork-enterprise-login" : "https://quick.aws.com/sn");
-  url.searchParams.set("qwSurface", "desktop:" + nonce + ":" + port + ":1.2.4660");
+  url.searchParams.set("qwSurface", "desktop:" + nonce + ":" + port + ":" + appVersion);
   url.searchParams.set("magpie_callback_port", String(port));
   return url.href;
 }
@@ -220,10 +323,10 @@ async function discover(provider, query, region, redirect, signal) {
   }
   return { meta, authorize };
 }
-async function signIn(provider, options = {}) {
-  const region = process.env.AMAZON_QUICK_REGION || "us-east-1";
+async function signIn(provider, { appVersion = defaultOptions.appVersion, region: configuredRegion }, options = {}) {
+  const region = configuredRegion || process.env.AMAZON_QUICK_REGION || "us-east-1";
   if (!regionPattern.test(region))
-    throw new Error("Invalid AMAZON_QUICK_REGION");
+    throw new Error("Invalid Amazon Quick login region");
   options.signal?.throwIfAborted();
   const nonce = randomBytes(32).toString("base64url");
   const state = randomBytes(32).toString("base64url");
@@ -332,7 +435,7 @@ async function signIn(provider, options = {}) {
   if (options.signal?.aborted)
     abort();
   return {
-    url: discoveryURL(provider, nonce, port, region),
+    url: discoveryURL(provider, nonce, port, region, appVersion),
     method: "auto",
     opened: true,
     instructions: "\u590D\u5236\u4E0B\u65B9\u767B\u5F55\u94FE\u63A5\uFF0C\u7528\u4F60\u9009\u62E9\u7684\u6D4F\u89C8\u5668\u6216\u65E0\u75D5\u7A97\u53E3\u6253\u5F00\u3002" + "\u5982\u679C\u56DE\u8C03\u9875\u9762\u6253\u4E0D\u5F00\uFF0C\u628A\u5730\u5740\u680F\u91CC\u7684\u5B8C\u6574\u5730\u5740\u7C98\u8D34\u5230 Magpie \u7684\u56DE\u8C03\u8F93\u5165\u6846\u5E76\u63D0\u4EA4\u3002" + "\u7B49\u94FE\u63A5\u66F4\u65B0\u540E\uFF0C\u590D\u5236\u65B0\u94FE\u63A5\u5230\u540C\u4E00\u4E2A\u6D4F\u89C8\u5668\u7A97\u53E3\u7EE7\u7EED\u6388\u6743\uFF0C\u518D\u7C98\u8D34\u7B2C\u4E8C\u4E2A\u5B8C\u6574\u56DE\u8C03\u5730\u5740\u5E76\u63D0\u4EA4\u3002",
@@ -349,10 +452,12 @@ async function signIn(provider, options = {}) {
     }
   };
 }
-var authMethods = [
-  { type: "oauth", label: "Amazon Quick \u4E2A\u4EBA\u8D26\u53F7", authorize: (_inputs, options) => signIn("social", options) },
-  { type: "oauth", label: "Amazon Quick \u4F01\u4E1A\u8D26\u53F7", authorize: (_inputs, options) => signIn("enterprise", options) }
-];
+function createAuthMethods(clientOptions = defaultOptions) {
+  return [
+    { type: "oauth", label: "Amazon Quick \u4E2A\u4EBA\u8D26\u53F7", authorize: (_inputs, context) => signIn("social", clientOptions, context) },
+    { type: "oauth", label: "Amazon Quick \u4F01\u4E1A\u8D26\u53F7", authorize: (_inputs, context) => signIn("enterprise", clientOptions, context) }
+  ];
+}
 
 // src/chat.js
 import { randomUUID as randomUUID3 } from "crypto";
@@ -2569,8 +2674,6 @@ function decodeQuickFrame(data, binary, gateway) {
 }
 
 // src/transport.js
-var appVersion = "1.2.4660";
-var surface = "QUICK_WORK_DESKTOP_WINDOWS";
 var aidpPath = "/streaming/quickwork-chat-bidirectional-stream";
 var gatewayPath = "/ws/service/SpaceNeedleConversationService/operation/ChatBidirectionalStream";
 var terminal = new Set(["turn_completed", "turn_ended", "stream_ended", "chat_complete"]);
@@ -2585,7 +2688,7 @@ var toolEvents = new Set([
   "tool_call",
   "tool_call_update"
 ]);
-function destination(session, gateway) {
+function destination(session, gateway, { surface, outpostId, workingSessionId }) {
   const host = session.wsHost;
   const path = gateway ? gatewayPath : aidpPath;
   if (typeof host !== "string" || !/^[a-z0-9.-]+$/.test(host) || !isQuickHost(host) || session.wsPath && session.wsPath !== path) {
@@ -2597,6 +2700,10 @@ function destination(session, gateway) {
   const url = new URL("wss://" + host + path);
   if (!gateway) {
     url.searchParams.set("surfaceType", surface);
+    if (outpostId)
+      url.searchParams.set("outpostId", outpostId);
+    if (workingSessionId)
+      url.searchParams.set("workingSessionId", workingSessionId);
     if (session.provider === "social")
       url.searchParams.set("token", session.jwt);
   }
@@ -2642,12 +2749,15 @@ function stamp() {
   return { epoch: Date.now(), monotonic: performance.now() };
 }
 async function* streamQuick(session, input, signal, connect = (url, options) => new WebSocket(url, options)) {
+  const abortError = () => signal.reason?.name === "TimeoutError" ? quickError("Amazon Quick request timed out", 504) : quickError("Amazon Quick request canceled", 499);
   if (signal?.aborted)
-    throw quickError("Amazon Quick request canceled", 499);
+    throw abortError();
   if (!input.prompt?.trim())
     throw quickError("Quick requires a non-empty message", 400);
   const gateway = session.provider === "gateway" || session.provider === "social_gateway";
-  const url = destination(session, gateway);
+  const options = input.clientOptions ?? defaultOptions;
+  const { appVersion, surface, outpostId, workingSessionId } = options;
+  const url = destination(session, gateway, options);
   const thread = input.threadId || randomUUID2();
   const title = input.title || Array.from(input.prompt.replace(/\s+/g, " ").trim()).slice(0, 60).join("");
   let socket;
@@ -2657,8 +2767,9 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
         Authorization: "Bearer " + session.jwt,
         Origin: "file://",
         "X-Surface-Type": surface,
-        "X-Outpost-Id": "",
-        "X-Agent-Service-Type": "UNIFIED_QUICK"
+        "X-Outpost-Id": outpostId,
+        "X-Agent-Service-Type": "UNIFIED_QUICK",
+        ...workingSessionId ? { "X-Working-Session-Id": workingSessionId } : {}
       },
       followRedirects: false,
       handshakeTimeout: 20000,
@@ -2674,7 +2785,7 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
   function closeConnection() {
     if (socket.readyState === WebSocket.OPEN) {
       try {
-        if (started)
+        if (started && !options.keepSessions)
           send("session_delete", { session_id: thread });
         socket.close();
       } catch {
@@ -2695,7 +2806,7 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
   });
   socket.once("close", (code) => push({ kind: "closed", code }));
   function abort() {
-    push({ error: quickError("Amazon Quick request canceled", 499) });
+    push({ error: abortError() });
     closeConnection();
   }
   signal?.addEventListener("abort", abort, { once: true });
@@ -2704,7 +2815,7 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
   const deadline = setTimeout(() => {
     push({ error: quickError("Amazon Quick request timed out", 504) });
     closeConnection();
-  }, 300000);
+  }, options.requestTimeoutSeconds * 1000);
   const keepalive = setInterval(() => {
     if (socket.readyState === WebSocket.OPEN) {
       try {
@@ -2724,17 +2835,17 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
     loop:
       for await (const [packet] of packets) {
         if (signal?.aborted)
-          throw quickError("Amazon Quick request canceled", 499);
+          throw abortError();
         if (packet.error)
           throw packet.error;
         if (packet.kind === "open") {
           if (gateway) {
-            socket.send(encodeQuickFrame({ type: "session_connect", session_id: "" }, true), { binary: true });
+            socket.send(encodeQuickFrame({ type: "session_connect", session_id: outpostId }, true), { binary: true });
           } else {
             send("session_connect", {
               actor_id: session.actorArn || "",
               surfaceType: surface,
-              outpostId: "",
+              outpostId,
               appVersion,
               external_agent_sign_in: 1,
               recents_promotion: 1
@@ -2747,14 +2858,14 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
             send_origin: "programmatic",
             had_physical_input: false,
             surfaceType: surface,
-            outpostId: "",
+            outpostId,
             appVersion,
             traceId: randomUUID2(),
             message_id: randomUUID2(),
             thread_id: thread,
             agent_mode: input.model || "smart",
-            user_timezone: "UTC",
-            user_locale: "en-US",
+            user_timezone: options.timezone,
+            user_locale: options.locale,
             chat_agent_id: null,
             auto_routing: false,
             web_search_enabled: false,
@@ -2762,7 +2873,8 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
             preload_skills: [],
             panel_edits: [],
             custom_prompt: null,
-            ...input.systemPrompt ? { system_prompt: input.systemPrompt } : {}
+            ...input.systemPrompt ? { system_prompt: input.systemPrompt } : {},
+            ...options.thinkingEffort !== "off" ? { thinking_effort: options.thinkingEffort } : {}
           });
           started = stamp();
           idleTimer = setTimeout(() => push({ kind: "idle" }), 120000);
@@ -2782,7 +2894,7 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
         }
         for (const event of decodeQuickFrame(packet.data, packet.binary, gateway)) {
           if (signal?.aborted)
-            throw quickError("Amazon Quick request canceled", 499);
+            throw abortError();
           const type = event?.type;
           const p = event?.payload ?? {};
           if (type === "text_delta" || type === "text_complete") {
@@ -2839,7 +2951,7 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
       }
     for (const tool of tools.values()) {
       if (signal?.aborted)
-        throw quickError("Amazon Quick request canceled", 499);
+        throw abortError();
       if (tool.name)
         yield { ...tool, arguments: tool.arguments || "{}" };
     }
@@ -2988,7 +3100,7 @@ function asStream(iterator, first, base, includeUsage, controller) {
   });
   return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } });
 }
-function createChatFetch({ baseURL, models, session, record, stream = streamQuick }) {
+function createChatFetch({ baseURL, models, session, record, stream = streamQuick, clientOptions = defaultOptions }) {
   return async (url, init) => {
     const request = new Request(url, init);
     let signal = request.signal;
@@ -3009,7 +3121,7 @@ function createChatFetch({ baseURL, models, session, record, stream = streamQuic
         throw badRequest2("Amazon Quick accepts one completion per request");
       const turn = prepareTurn(body);
       const controller = new AbortController;
-      signal = AbortSignal.any([request.signal, controller.signal, AbortSignal.timeout(300000)]);
+      signal = AbortSignal.any([request.signal, controller.signal, AbortSignal.timeout(clientOptions.requestTimeoutSeconds * 1000)]);
       signal.throwIfAborted();
       let account;
       try {
@@ -3018,7 +3130,7 @@ function createChatFetch({ baseURL, models, session, record, stream = streamQuic
         throw Object.assign(new Error("Account unavailable"), { status: err?.status || 401 });
       }
       signal.throwIfAborted();
-      const events = stream(account, { ...turn, onTiming: (timing) => record(account.accountId, timing) }, signal);
+      const events = stream(account, { ...turn, clientOptions, onTiming: (timing) => record(account.accountId, timing) }, signal);
       const parts = updates(turn, events);
       const base = { id: "chatcmpl-" + randomUUID3(), created: Math.floor(Date.now() / 1000), model: body.model };
       if (!body.stream)
@@ -3088,12 +3200,7 @@ var models = Object.fromEntries(["smart", "fast", "balanced", "auto"].map((mode)
 ]));
 async function AmazonQuickPlugin({ client, directory, magpie }, options = {}) {
   const dataDir = magpie && directory ? directory : join2(process.env.XDG_DATA_HOME || join2(homedir(), ".local", "share"), "magpie");
-  const budget = options.monthlyHours ?? 10;
-  if (typeof budget !== "number" || !Number.isFinite(budget) || budget <= 0)
-    throw new Error("monthlyHours must be a positive number");
-  const transport = options.transport ?? "aidp";
-  if (!["aidp", "gateway"].includes(transport))
-    throw new Error("transport must be aidp or gateway");
+  const clientOptions = readOptions(options);
   return {
     async config(config) {
       config.provider ??= {};
@@ -3107,15 +3214,15 @@ async function AmazonQuickPlugin({ client, directory, magpie }, options = {}) {
     },
     auth: {
       provider,
-      methods: authMethods,
+      methods: createAuthMethods(clientOptions),
       refresh: refreshAuth,
       async usage(getAuth) {
-        return accountUsage(dataDir, sessionFromAuth(await getAuth()), budget);
+        return accountUsage(dataDir, sessionFromAuth(await getAuth()), clientOptions.monthlyHours);
       },
       async loader(getAuth) {
         async function session() {
           const account = magpie ? sessionFromAuth(await getAuth()) : await getSession(getAuth, (body) => client.auth.set({ path: { id: provider }, body }));
-          if (transport === "gateway")
+          if (clientOptions.transport === "gateway")
             account.provider = account.provider === "social" ? "social_gateway" : "gateway";
           return account;
         }
@@ -3126,6 +3233,7 @@ async function AmazonQuickPlugin({ client, directory, magpie }, options = {}) {
             baseURL,
             models,
             session,
+            clientOptions,
             record: async (accountId, timing) => {
               try {
                 await recordTurn(dataDir, accountId, timing);

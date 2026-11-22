@@ -1,7 +1,8 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { authMethods, getSession, refreshAuth, sessionFromAuth } from './src/auth.js'
+import { createAuthMethods, getSession, refreshAuth, sessionFromAuth } from './src/auth.js'
 import { createChatFetch } from './src/chat.js'
+import { readOptions } from './src/options.js'
 import { accountUsage, recordTurn } from './src/usage.js'
 
 const provider = 'amazon-quick'
@@ -13,10 +14,7 @@ const models = Object.fromEntries(['smart', 'fast', 'balanced', 'auto'].map(mode
 
 export async function AmazonQuickPlugin({ client, directory, magpie }, options = {}) {
   const dataDir = magpie && directory ? directory : join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'magpie')
-  const budget = options.monthlyHours ?? 10
-  if (typeof budget !== 'number' || !Number.isFinite(budget) || budget <= 0) throw new Error('monthlyHours must be a positive number')
-  const transport = options.transport ?? 'aidp'
-  if (!['aidp', 'gateway'].includes(transport)) throw new Error('transport must be aidp or gateway')
+  const clientOptions = readOptions(options)
   return {
     async config(config) {
       config.provider ??= {}
@@ -27,10 +25,10 @@ export async function AmazonQuickPlugin({ client, directory, magpie }, options =
     },
     auth: {
       provider,
-      methods: authMethods,
+      methods: createAuthMethods(clientOptions),
       refresh: refreshAuth,
       async usage(getAuth) {
-        return accountUsage(dataDir, sessionFromAuth(await getAuth()), budget)
+        return accountUsage(dataDir, sessionFromAuth(await getAuth()), clientOptions.monthlyHours)
       },
       async loader(getAuth) {
         // Magpie owns refresh and serializes it across processes. OpenCode
@@ -39,13 +37,13 @@ export async function AmazonQuickPlugin({ client, directory, magpie }, options =
           const account = magpie
             ? sessionFromAuth(await getAuth())
             : await getSession(getAuth, body => client.auth.set({ path: { id: provider }, body }))
-          if (transport === 'gateway') account.provider = account.provider === 'social' ? 'social_gateway' : 'gateway'
+          if (clientOptions.transport === 'gateway') account.provider = account.provider === 'social' ? 'social_gateway' : 'gateway'
           return account
         }
         return {
           baseURL, apiKey: provider,
           fetch: createChatFetch({
-            baseURL, models, session,
+            baseURL, models, session, clientOptions,
             record: async (accountId, timing) => {
               try { await recordTurn(dataDir, accountId, timing) }
               catch {

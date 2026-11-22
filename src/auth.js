@@ -1,9 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { createServer } from 'node:http'
+import { defaultOptions, regionPattern } from './options.js'
 
 const dataPlane = 'https://cell001.dp.appintegrations.us-east-1.prod.plato.ai.aws.dev'
 const scopes = ['quicksight:read_write']
-const regionPattern = /^[a-z]{2}(?:-[a-z0-9]+)+-[0-9]+$/
 const refreshing = new Map()
 
 export function isQuickHost(host) {
@@ -156,12 +156,12 @@ export async function refreshAuth(auth) {
   return tokenRecord(meta, await exchange(meta, {}))
 }
 
-function discoveryURL(provider, nonce, port, region) {
+function discoveryURL(provider, nonce, port, region, appVersion) {
   const enterpriseHost = (region === 'us-east-1' ? '' : region + '.') + 'quicksight.aws.amazon.com'
   const url = new URL(provider === 'enterprise'
     ? 'https://' + enterpriseHost + '/sn/start/app-integrations/quickwork-enterprise-login'
     : 'https://quick.aws.com/sn')
-  url.searchParams.set('qwSurface', 'desktop:' + nonce + ':' + port + ':1.2.4660')
+  url.searchParams.set('qwSurface', 'desktop:' + nonce + ':' + port + ':' + appVersion)
   // Magpie finds loopback callbacks by URL or a named port in the query.
   // Quick reads its port from qwSurface, which Magpie can't parse.
   url.searchParams.set('magpie_callback_port', String(port))
@@ -198,9 +198,9 @@ async function discover(provider, query, region, redirect, signal) {
   return { meta, authorize }
 }
 
-async function signIn(provider, options = {}) {
-  const region = process.env.AMAZON_QUICK_REGION || 'us-east-1'
-  if (!regionPattern.test(region)) throw new Error('Invalid AMAZON_QUICK_REGION')
+async function signIn(provider, { appVersion = defaultOptions.appVersion, region: configuredRegion }, options = {}) {
+  const region = configuredRegion || process.env.AMAZON_QUICK_REGION || 'us-east-1'
+  if (!regionPattern.test(region)) throw new Error('Invalid Amazon Quick login region')
   options.signal?.throwIfAborted()
   const nonce = randomBytes(32).toString('base64url')
   const state = randomBytes(32).toString('base64url')
@@ -290,7 +290,7 @@ async function signIn(provider, options = {}) {
   options.signal?.addEventListener('abort', abort, { once: true })
   if (options.signal?.aborted) abort()
   return {
-    url: discoveryURL(provider, nonce, port, region),
+    url: discoveryURL(provider, nonce, port, region, appVersion),
     method: 'auto',
     // Magpie leaves opening the URL to the user when the plugin handles it.
     opened: true,
@@ -306,7 +306,9 @@ async function signIn(provider, options = {}) {
   }
 }
 
-export const authMethods = [
-  { type: 'oauth', label: 'Amazon Quick 个人账号', authorize: (_inputs, options) => signIn('social', options) },
-  { type: 'oauth', label: 'Amazon Quick 企业账号', authorize: (_inputs, options) => signIn('enterprise', options) },
-]
+export function createAuthMethods(clientOptions = defaultOptions) {
+  return [
+    { type: 'oauth', label: 'Amazon Quick 个人账号', authorize: (_inputs, context) => signIn('social', clientOptions, context) },
+    { type: 'oauth', label: 'Amazon Quick 企业账号', authorize: (_inputs, context) => signIn('enterprise', clientOptions, context) },
+  ]
+}

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { get as httpGet } from 'node:http'
 import test from 'node:test'
-import { authMethods, getSession, refreshAuth, sessionFromAuth } from '../src/auth.js'
+import { createAuthMethods, getSession, refreshAuth, sessionFromAuth } from '../src/auth.js'
 
+const authMethods = createAuthMethods()
 const loopbackFetch = globalThis.fetch.bind(globalThis)
 const sendCallback = (port, path, params) =>
   loopbackFetch('http://127.0.0.1:' + port + path + '?' + new URLSearchParams(params), { redirect: 'manual' })
@@ -12,7 +13,7 @@ function readSurface(flow) {
   const [surface, nonce, port, version] = new URL(flow.url).searchParams.get('qwSurface').split(':')
   assert.equal(surface, 'desktop')
   assert.ok(version)
-  return { nonce, port }
+  return { nonce, port, version }
 }
 
 for (const [i, provider] of ['social', 'enterprise'].entries()) {
@@ -23,7 +24,8 @@ for (const [i, provider] of ['social', 'enterprise'].entries()) {
     const server = new AbortController()
     t.after(() => server.abort())
     const flow = await authMethods[i].authorize(undefined, { signal: server.signal })
-    const { nonce, port } = readSurface(flow)
+    const { nonce, port, version } = readSurface(flow)
+    assert.equal(version, '1.2.4660')
     assert.equal(flow.method, 'auto')
     assert.equal(flow.opened, true)
     assert.equal(new URL(flow.url).searchParams.get('magpie_callback_port'), port)
@@ -92,6 +94,42 @@ for (const [i, provider] of ['social', 'enterprise'].entries()) {
     })
   })
 }
+
+test('Quick login versions and regions stay independent across concurrent plugin instances', async t => {
+  const controller = new AbortController()
+  const context = { signal: controller.signal }
+  const previousRegion = process.env.AMAZON_QUICK_REGION
+  t.after(() => {
+    controller.abort()
+    if (previousRegion === undefined) delete process.env.AMAZON_QUICK_REGION
+    else process.env.AMAZON_QUICK_REGION = previousRegion
+  })
+  process.env.AMAZON_QUICK_REGION = 'eu-central-1'
+  const configured = createAuthMethods({ appVersion: '2.3.4567', region: 'ap-northeast-1' })
+  const inherited = createAuthMethods({ appVersion: '3.4.5678', region: '' })
+  const [personal, enterprise, inheritedEnterprise] = await Promise.all([
+    configured[0].authorize(undefined, context), configured[1].authorize(undefined, context),
+    inherited[1].authorize(undefined, context),
+  ])
+  assert.equal(readSurface(personal).version, '2.3.4567')
+  assert.equal(readSurface(enterprise).version, '2.3.4567')
+  assert.equal(readSurface(inheritedEnterprise).version, '3.4.5678')
+  assert.equal(new URL(enterprise.url).hostname, 'ap-northeast-1.quicksight.aws.amazon.com')
+  assert.equal(new URL(inheritedEnterprise.url).hostname, 'eu-central-1.quicksight.aws.amazon.com')
+
+  t.mock.method(globalThis, 'fetch', async endpoint => {
+    assert.equal(endpoint, 'https://oidc.ap-northeast-1.amazonaws.com/client/register')
+    return Response.json({ clientId: 'fixture-id', clientSecret: 'fixture-secret' })
+  })
+  const { nonce, port } = readSurface(personal)
+  const approval = await sendCallback(port, '/callback', { nonce, issuerUrl: 'https://identitycenter.amazonaws.com/ssoins-test' })
+  assert.equal(approval.status, 302)
+  assert.equal(new URL(approval.headers.get('location')).hostname, 'oidc.ap-northeast-1.amazonaws.com')
+
+  delete process.env.AMAZON_QUICK_REGION
+  const defaultEnterprise = await authMethods[1].authorize(undefined, context)
+  assert.equal(new URL(defaultEnterprise.url).hostname, 'quicksight.aws.amazon.com')
+})
 
 test('discovery refuses a non-Quick tenant before making a network request', async t => {
   const calls = t.mock.method(globalThis, 'fetch', () => { throw new Error('unexpected outbound request') })

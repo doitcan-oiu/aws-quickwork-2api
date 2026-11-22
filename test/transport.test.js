@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter, once } from 'node:events'
 import WebSocket, { WebSocketServer } from 'ws'
+import { createChatFetch } from '../src/chat.js'
+import { defaultOptions } from '../src/options.js'
 import { decodeQuickFrame, encodeQuickFrame } from '../src/wire.js'
 import { streamQuick } from '../src/transport.js'
 
@@ -9,13 +11,13 @@ const session = { provider: 'social', jwt: 'test-only', wsHost: 'example.plato.a
 const message = { prompt: 'Say hello', systemPrompt: 'Be concise', model: 'fast' }
 const aidpReply = Buffer.from('AAAAfwAAAB19psSuCzpldmVudC10eXBlBwAOcmF3T3V0cHV0RXZlbnR7InBheWxvYWQiOiJleUowZVhCbElqb2lkR1Y0ZEY5a1pXeDBZU0lzSW5CaGVXeHZZV1FpT25zaVpHVnNkR0VpT2lKb1pXeHNieUo5ZlE9PSJ902N97w==', 'base64')
 
-function socketFixture(run) {
+function socketFixture(run, gateway = false) {
   const socket = Object.assign(new EventEmitter(), { readyState: WebSocket.CONNECTING })
   const sent = []
   socket.send = (frame, options) => {
     assert.equal(options.binary, true)
-    const envelope = JSON.parse(frame.toString())
-    const event = JSON.parse(Buffer.from(envelope.payload.payload, 'base64').toString())
+    const [envelope] = decodeQuickFrame(frame, true, gateway)
+    const event = gateway ? envelope : JSON.parse(Buffer.from(envelope.payload.payload, 'base64').toString())
     sent.push(event)
     if (event.type === 'user_message') queueMicrotask(() => run(socket))
   }
@@ -108,9 +110,76 @@ test('a Quick turn streams content and usage, keeps final tool arguments and sum
   assert.deepEqual(fixture.sent.map(e => e.type), ['session_connect', 'federate_status', 'session_create', 'user_message', 'session_delete'])
   assert.equal(fixture.sent[3].payload.system_prompt, message.systemPrompt)
   assert.equal(fixture.sent[3].payload.text, message.prompt)
+  assert.equal(fixture.sent[3].payload.appVersion, '1.2.4660')
+  assert.equal(fixture.sent[3].payload.surfaceType, 'QUICK_WORK_DESKTOP_WINDOWS')
+  assert.equal(fixture.sent[3].payload.user_timezone, 'UTC')
+  assert.equal(fixture.sent[3].payload.user_locale, 'en-US')
+  assert.equal('thinking_effort' in fixture.sent[3].payload, false)
   assert.equal(timings.length, 1)
   assert.equal(timings[0].durationMs, 174)
   assert.ok(timings[0].endedAt > 0)
+})
+
+for (const gateway of [false, true]) {
+  test((gateway ? 'Gateway' : 'AIDP') + ' uses saved client options throughout a chat request', async t => {
+    const clientOptions = { ...defaultOptions, appVersion: '2.3.4567', surface: 'TEST_SURFACE',
+      locale: 'zh-TW', timezone: 'Asia/Taipei', thinkingEffort: 'high', outpostId: 'outpost-test',
+      workingSessionId: 'session-test', requestTimeoutSeconds: 17, keepSessions: true }
+    const fixture = socketFixture(socket => {
+      emit(socket, 'text_delta', { text: 'OK' })
+      emit(socket, 'turn_completed')
+    }, gateway)
+    const connect = t.mock.fn(fixture.connect)
+    const timeout = t.mock.method(AbortSignal, 'timeout')
+    const fetch = createChatFetch({
+      baseURL: 'https://example.invalid', models: { fast: {} }, clientOptions,
+      session: () => gateway ? { ...session, provider: 'gateway' } : session,
+      record() {},
+      stream: (account, turn, signal) => streamQuick(account, turn, signal, connect),
+    })
+    const response = await fetch('https://example.invalid/chat/completions', { method: 'POST',
+      body: JSON.stringify({ model: 'fast', messages: [{ role: 'user', content: 'hello' }] }) })
+    assert.equal((await response.json()).choices[0].message.content, 'OK')
+    assert.ok(timeout.mock.calls.some(call => call.arguments[0] === 17_000))
+    const [url, { headers }] = connect.mock.calls[0].arguments
+    assert.equal(headers['X-Surface-Type'], clientOptions.surface)
+    assert.equal(headers['X-Outpost-Id'], clientOptions.outpostId)
+    assert.equal(headers['X-Working-Session-Id'], clientOptions.workingSessionId)
+    if (gateway) {
+      assert.equal(url.search, '')
+      assert.deepEqual(fixture.sent[0], { type: 'session_connect', session_id: clientOptions.outpostId })
+    } else {
+      assert.equal(url.searchParams.get('surfaceType'), clientOptions.surface)
+      assert.equal(url.searchParams.get('outpostId'), clientOptions.outpostId)
+      assert.equal(url.searchParams.get('workingSessionId'), clientOptions.workingSessionId)
+      assert.equal(fixture.sent[0].payload.surfaceType, clientOptions.surface)
+      assert.equal(fixture.sent[0].payload.outpostId, clientOptions.outpostId)
+      assert.equal(fixture.sent[0].payload.appVersion, clientOptions.appVersion)
+    }
+    const turn = fixture.sent.find(event => event.type === 'user_message').payload
+    assert.equal(turn.surfaceType, clientOptions.surface)
+    assert.equal(turn.outpostId, clientOptions.outpostId)
+    assert.equal(turn.appVersion, clientOptions.appVersion)
+    assert.equal(turn.user_locale, clientOptions.locale)
+    assert.equal(turn.user_timezone, clientOptions.timezone)
+    assert.equal(turn.thinking_effort, clientOptions.thinkingEffort)
+    assert.equal(fixture.sent.some(event => event.type === 'session_delete'), false)
+    assert.equal(fixture.socket.readyState, WebSocket.CLOSED)
+  })
+}
+
+test('the configured transport deadline closes a turn before its idle timeout', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const fixture = socketFixture(socket => emit(socket, 'text_delta', { text: 'start' }))
+  const stream = streamQuick(session, {
+    ...message, clientOptions: { ...defaultOptions, requestTimeoutSeconds: 9 },
+  }, undefined, fixture.connect)
+  assert.equal((await stream.next()).value.text, 'start')
+  t.mock.timers.tick(8999)
+  assert.equal(fixture.socket.readyState, WebSocket.OPEN)
+  t.mock.timers.tick(1)
+  await assert.rejects(stream.next(), err => err.status === 504)
+  assert.equal(fixture.sent.at(-1).type, 'session_delete')
 })
 
 test('consumer return after output still records elapsed time and deletes the session', async () => {
