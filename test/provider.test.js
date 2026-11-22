@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -129,6 +130,42 @@ test('audit_echo from fragmented Quick text is a client tool call in both JSON a
   assert.equal(calls.length, 1)
   assert.equal(calls[0].index, 0)
   assert.deepEqual(calls[0].function, expected)
+})
+
+test('a tool call can finish on the next request with the caller’s exact confirmation', async () => {
+  const tools = [{ type: 'function', function: { name: 'audit_echo', parameters: {
+    type: 'object', required: ['nonce', 'sum'], properties: { nonce: { type: 'string' }, sum: { type: 'integer' } },
+  } } }]
+  const request = { ...req, tools, messages: [{ role: 'user', content:
+    'Call audit_echo once with nonce sample and sum 17+25. After the result reply only with its confirmation token.' }] }
+  const args = { nonce: 'sample', sum: 42 }
+  let confirmation
+  const fetch = client(async function* (_account, turn) {
+    if (!confirmation) {
+      yield { type: 'text', text: '<client_tool_call>' + JSON.stringify({ name: 'audit_echo', arguments: args }) + '</client_tool_call>' }
+      return
+    }
+    assert.equal(turn.tools.required, false)
+    const history = JSON.parse(turn.prompt.split('\n').find(line => line.startsWith('[{"role":')))
+    const result = history.at(-1)
+    assert.equal(result.role, 'tool')
+    assert.equal(result.tool_call_id, history.at(-2).tool_calls[0].id)
+    yield { type: 'text', text: result.content }
+  })
+  const first = await (await post(fetch, { ...request, tool_choice: 'required' })).json()
+  const assistant = first.choices[0].message
+  assert.equal(first.choices[0].finish_reason, 'tool_calls')
+  assert.equal(assistant.tool_calls.length, 1)
+  const [call] = assistant.tool_calls
+  assert.equal(call.function.name, 'audit_echo')
+  assert.deepEqual(JSON.parse(call.function.arguments), args)
+  confirmation = 'tool-confirm-' + randomUUID()
+  const result = { role: 'tool', tool_call_id: call.id, content: confirmation }
+  const response = await post(fetch, { ...request, messages: [...request.messages, assistant, result] })
+  assert.equal(response.status, 200)
+  const final = await response.json()
+  assert.equal(final.choices[0].finish_reason, 'stop')
+  assert.deepEqual(final.choices[0].message, { role: 'assistant', content: confirmation })
 })
 
 test('a streamed error after the first delta terminates the response without leaking upstream details', async () => {

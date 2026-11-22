@@ -175,7 +175,7 @@ function startLoginWizard(port) {
 // package.json
 var package_default = {
   name: "magpie-amazon-quick",
-  version: "1.3.1",
+  version: "1.3.2",
   description: "Amazon Quick subscription provider for Magpie",
   magpie: {
     icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHN0eWxlPnBhdGh7ZmlsbDojMWMxYzFlfUBtZWRpYSAocHJlZmVycy1jb2xvci1zY2hlbWU6ZGFyayl7cGF0aHtmaWxsOiNmMmYyZjJ9fTwvc3R5bGU+PHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMS41IDUuNUMxLjMgNS43IDEuMiA2LjUgMS4yIDYuOUMxLjIgNi45IDEuMiA3IDEuMiA3LjFDMS4xIDcuNCAxLjMgOCAxLjQgOC4zQzEuNCA4LjQgMS41IDguNSAxLjUgOC43QzEuNSA4LjkgMS43IDkgMS44IDkuM0MyLjIgOS45IDIuMiAxMCAyLjMgMTAuMUMyLjQgMTAuMiAyLjUgMTAuMyAyLjYgMTAuNUMyLjggMTAuOCAzIDExLjEgMy4yIDExLjNDMy4zIDExLjMgMy40IDExLjYgMy42IDExLjhDMy44IDEyIDQuMSAxMi40IDQuMiAxMi41QzQuNyAxMyA1LjIgMTMuNyA1LjQgMTMuOUM2IDE0LjUgNi41IDE1LjEgNi43IDE1LjNDNi43IDE1LjQgNi45IDE1LjUgNi45IDE1LjdDNy4zIDE1LjkgNy43IDE2LjUgNy45IDE2LjhDNy45IDE2LjggOCAxNi45IDggMTYuOUM4LjEgMTYuOSA4LjIgMTcuMiA4LjIgMTcuM0M4LjIgMTcuMyA4LjEgMTcuMiA4LjEgMTcuMUM3LjkgMTYuOSA3LjkgMTYuOSA3LjYgMTYuNkM3LjUgMTYuNSA3LjQgMTYuNSA3LjQgMTYuM0M3LjIgMTYuMiA2LjcgMTUuNyA2LjMgMTUuMkM2LjEgMTUuMSA2IDE0LjkgNiAxNC45QzUuOSAxNC44IDUuNyAxNC43IDUuNyAxNC42QzUuNiAxNC41IDUuNCAxNC4zIDUuMyAxNC4yQzUuMSAxNC4xIDQuOSAxMy44IDQuNyAxMy41QzQuNSAxMy4zIDQuMiAxMy4xIDQuMSAxMi45QzQuMSAxMi45IDMuOCAxMi43IDMuOCAxMi41QzMuNSAxMi4zIDMgMTEuOCAyLjggMTEuNEMxLjggMTAuNSAwLjkgOS42IDAuNyA5LjZDMC42IDkuNyAwLjYgOS44IDAuNSAxMEMwLjUgMTAuMSAwLjYgMTAuMiAwLjUgMTAuM0MwLjUgMTAuNCAwLjYgMTAuNSAwLjYgMTAuNkMwLjUgMTAuNyAwLjUgMTAuOSAwLjYgMTFDMC41IDExLjEgMC42IDExLjQgMC42IDExLjVDMC45IDEyLjkgMS4zIDEzLjggMi44IDE0LjlDMi45IDE1LjEgMy4zIDE1LjMgMy40IDE1LjRDMy40IDE1LjUgMy42IDE1LjYgMy43IDE1LjdDNC4yIDE2IDYuNCAxNy44IDcgMTguNEM3LjQgMTguOCA3LjQgMTguOCA3LjUgMTguOUM3LjYgMTkgNy43IDE5IDcuNyAxOS4xQzcuNyAxOS4yIDcuOCAxOS4yIDcuOSAxOS4yQzcuOSAxOS4zIDguMSAxOS40IDguMSAxOS41QzguMiAxOS42IDguMiAxOS43IDguMyAxOS43QzguMyAxOS43IDguMyAxOS43IDguMiAxOS43QzguMiAxOS42IDguMSAxOS42IDggMTkuNkM3LjkgMTkuNSA3LjkgMTkuNCA3LjggMTkuNEM3LjcgMTkuMyA3LjYgMTkuMiA3LjYgMTkuMkM3LjYgMTkuMSA3LjUgMTkgNy4zIDE4LjlDNy4yIDE4LjkgNi45IDE4LjYgNi43IDE4LjRDNi4xIDE3LjggNC41IDE2LjYgMy41IDE2QzMuNCAxNS44IDMgMTUuNiAyLjkgMTUuNUMyLjYgMTUuMyAxLjUgMTQuNiAwLjkgMTQuM0MwLjcgMTQuMSAwLjYgMTQuMSAwLjYgMTQuMkMwLjUgMTQuNSAwLjggMTUuOSAwLjkgMTYuMUMwLjkgMTYuMiAxIDE2LjIgMC45IDE2LjNDMS4yIDE2LjggMS45IDE3LjYgMi43IDE4LjNDMi44IDE4LjUgNCAxOS4yIDQuNyAxOS41QzYuMiAyMC41IDYuNiAyMC43IDcuNCAyMS41QzguMiAyMi4yIDguNyAyMi43IDkuMyAyMy42QzkuNSAyNC4xIDkuOSAyNC40IDEwLjMgMjUuM0MxMC40IDI1LjUgMTAuNSAyNS44IDEwLjUgMjUuOEMxMC43IDI1LjggMTAuOCAyNS43IDExIDI1LjRDMTEuNiAyNSAxMS45IDI0LjYgMTIuMyAyNC4zQzEyLjggMjQgMTMgMjMuOCAxMyAyMy43QzEzLjEgMjMuNyAxMy4xIDIzLjggMTMgMjRDMTIgMjQuOCAxMSAyNiAxMC4yIDI2LjlDMTAuMSAyNy4xIDkuOSAyNy41IDkuNyAyNy43QzkuNSAyNy44IDkuNCAyOCA5LjQgMjhDOS40IDI4IDkuMyAyOC4zIDkuMSAyOC41QzguNiAyOS4yIDcuNyAzMC44IDcuNyAzMC45QzcuNyAzMSA3LjggMzEgOC4zIDMwLjhDOSAzMC40IDkuNSAzMC4yIDEwLjQgMzBDMTEuNyAyOS42IDEyLjUgMjkuNiAxMS42IDMwQzEwLjUgMzAuMiA5LjcgMzAuNiA5LjIgMzEuMkM4LjggMzEuNyA4LjggMzEuNyA5LjMgMzEuN0MxMC4xIDMxLjggMTAuOSAzMS45IDExLjYgMzIuMkMxMi44IDMyLjcgMTMuNSAzMy4xIDE1LjUgMzQuOEMxNi40IDM1LjUgMTcuMyAzNi4yIDE3LjggMzYuNEMxNy45IDM2LjUgMTguMSAzNi43IDE4LjIgMzYuOEMxOS4xIDM3LjMgMjEuMiAzOC4xIDIyLjMgMzguM0MyMi40IDM4LjMgMjIuNyAzOC4zIDIyLjggMzguM0MyMi44IDM4LjUgMjMgMzguNSAyMyAzOC41QzIzLjEgMzguNSAyMy4yIDM4LjUgMjMuMyAzOC41QzIzLjYgMzguNiAyNS45IDM4LjYgMjYuMSAzOC41QzI2LjIgMzguNSAyNi4zIDM4LjUgMjYuNCAzOC41QzI2LjUgMzguNSAyNi42IDM4LjUgMjYuNyAzOC4zQzI2LjcgMzguMyAyNyAzOC4zIDI3LjEgMzguM0MyOC4zIDM4LjEgMzAuMiAzNy4zIDMxLjQgMzYuN0MzMS41IDM2LjcgMzEuNyAzNi40IDMxLjggMzYuNEMzMi4yIDM2LjIgMzMuMiAzNS40IDMzLjQgMzUuMkMzNC4yIDM0LjUgMzUuNSAzMyAzNS44IDMyLjZDMzUuOCAzMi41IDM2IDMyLjIgMzYuMSAzMkMzNi40IDMxLjggMzYuNiAzMS40IDM2LjYgMzEuMkMzNi43IDMxLjEgMzYuOCAzMC45IDM2LjkgMzAuOEMzNy4yIDMwLjQgMzcuNSAyOS42IDM3LjcgMjkuMkMzNy43IDI5LjEgMzcuOCAyOC43IDM3LjkgMjguN0MzOC4xIDI4LjUgMzguNCAyNy4xIDM4LjUgMjYuOEMzOSAyNS4yIDM5LjEgMjMuNyAzOSAyMi40QzM5IDIyLjIgMzguOSAyMS45IDM4LjkgMjEuOEMzOC45IDIxLjcgMzguOSAyMS42IDM4LjkgMjEuNEMzOC42IDIwLjUgMzguNSAxOS45IDM4LjIgMTlDMzcuOSAxOC41IDM3LjUgMTcuNSAzNy4zIDE3LjJDMzcgMTYuOCAzNi44IDE1LjggMzYuOCAxNS4yQzM2LjggMTMuOCAzNy43IDEyLjcgMzkuNiAxMi4yQzQwLjEgMTIuMSA0MS4zIDExLjggNDIuMSAxMS43QzQzLjUgMTEuNSA0My41IDExLjUgNDMuNCAxMS4zQzQyLjkgMTAuNyA0MC45IDkuOSAzOS4yIDkuN0MzNy45IDkuNSAzOC4xIDkuNSAzNy42IDlDMzcgOC42IDM2LjQgOCAzNiA3LjlDMzYgNy44IDM1LjggNy44IDM1LjcgNy43QzM1LjEgNy4zIDM0LjIgNyAzMy4xIDYuOUMzMi42IDYuNyAzMS42IDYuOSAzMSA3QzI5LjYgNy4zIDI4LjMgOCAyNy4zIDkuMkMyNi43IDkuOCAyNi4yIDEwLjggMjUuNyAxMS43QzI1LjUgMTIuMSAyNC44IDEzLjQgMjQuNyAxMy43QzI0LjYgMTMuOSAyNC41IDE0LjEgMjQuMSAxNC43QzIzLjUgMTUuNyAyMi4xIDE2LjkgMjAuNiAxNy44QzIwLjUgMTggMjAuMyAxOC4yIDIwLjEgMTguM0MxOS43IDE4LjUgMTkuNCAxOC44IDE5LjEgMTlDMTguOSAxOS4xIDE4LjcgMTkuMyAxOC41IDE5LjRDMTggMTkuOCAxNy4yIDIwLjMgMTcgMjAuNUMxNi45IDIwLjUgMTYuOCAyMC42IDE2LjcgMjAuN0MxNi4zIDIwLjggMTYuMSAyMC45IDE2IDIwLjlDMTUuNSAyMC44IDE0LjkgMjAuNSAxNC4yIDIwLjJDMTMuNyAxOS44IDEyLjcgMTguOSAxMi40IDE4LjZDMTIuMyAxOC41IDEyLjIgMTguNCAxMi4xIDE4LjJDMTEuOSAxOCAxMS4yIDE3LjEgMTEgMTYuNkMxMC45IDE2LjUgMTAuOCAxNi40IDEwLjcgMTYuM0MxMC43IDE2LjIgMTAuNiAxNi4xIDEwLjYgMTUuOUMxMC41IDE1LjkgMTAuNCAxNS43IDEwLjQgMTUuNkMxMC4zIDE1LjUgMTAuMiAxNS4yIDEwLjEgMTVDMTAgMTQuOCA5LjggMTQuNCA5LjcgMTQuMkM5LjYgMTQgOS41IDEzLjcgOS40IDEzLjZDOS40IDEzLjQgOS4zIDEzLjIgOS4yIDEzQzkuMiAxMi44IDkgMTIuNiA5IDEyLjVDOC45IDEyLjMgOC43IDEyLjEgOC43IDEyQzguNyAxMiA4LjUgMTEuNyA4LjUgMTEuN0M4LjMgMTEuMiA4LjIgMTAuOSA3LjUgMTBDNi40IDguMyA0LjIgNi40IDIuNyA1LjhDMiA1LjUgMS42IDUuNCAxLjUgNS41Wk0yOC40IDE2LjdDMjkuMiAxNi45IDI5LjcgMTcuMiAyOS45IDE3LjdDMzAuMSAxOC4yIDMwIDE4LjkgMjkuNiAxOS40QzI5LjIgMTkuOSAyOC4yIDIwLjkgMjcuNiAyMS4yQzI2LjggMjEuNyAyNS4zIDIyLjQgMjQuMiAyMi43QzIzLjkgMjIuOCAyMy42IDIyLjkgMjMuNSAyMi45QzIyLjggMjMuMiAyMC43IDIzLjcgMTkuNiAyNEMxOSAyNC4yIDE4LjQgMjQuMyAxOC4xIDI0LjRDMTcuOSAyNC40IDE2LjEgMjQuOSAxNS4zIDI1LjFDMTQuNiAyNS4yIDE0LjcgMjUuMSAxNS43IDIzLjZDMTYuNCAyMi43IDE4LjUgMjAuNiAxOS40IDE5LjlDMjAuOCAxOC44IDIxLjQgMTguNCAyMy4yIDE3LjZDMjMuOCAxNy40IDI1LjYgMTYuOCAyNS45IDE2LjhDMjUuOSAxNi44IDI2LjMgMTYuOCAyNi42IDE2LjdDMjYuOCAxNi43IDI4LjIgMTYuNyAyOC40IDE2LjdaTTMwLjQgMjAuMkMzMC41IDIwLjMgMzAuNiAyMC42IDMwLjYgMjAuN0MzMS43IDIzLjEgMzMuNCAyNC42IDM1LjYgMjUuM0MzNi4xIDI1LjUgMzYuNyAyNS43IDM3LjIgMjUuOEMzNy43IDI1LjggMzcuOCAyNS45IDM3LjggMjYuMUMzNy43IDI2LjIgMzcuNyAyNi4zIDM3LjcgMjYuNUMzNy43IDI2LjYgMzcuNyAyNi44IDM3LjYgMjdDMzcuNCAyOC41IDM2LjggMjkuOSAzNi4xIDMxQzM2LjEgMzEuMiAzNS45IDMxLjQgMzUuOSAzMS42QzM1LjcgMzEuOSAzNS4yIDMyLjYgMzQuNyAzMy4zQzMyLjYgMzUuNiAyOS43IDM3LjMgMjYuNiAzNy44QzI2LjUgMzcuOCAyNi4zIDM3LjkgMjYuMiAzNy45QzI1LjggMzcuOSAyMy43IDM3LjkgMjMuMyAzNy45QzIzLjIgMzcuOSAyMyAzNy44IDIyLjkgMzcuOEMyMS4xIDM3LjYgMTkuMyAzNi44IDE4IDM1LjdDMTcuNyAzNS40IDE3IDM0LjcgMTYuOCAzNC41QzE2LjMgMzMuOCAxNi4xIDMzIDE2LjMgMzIuNUMxNi41IDMxLjggMTYuOCAzMS42IDE3LjkgMzEuMUMxOS4xIDMwLjUgMTkuNCAzMC40IDIwLjIgMzBDMjEuNCAyOS40IDIzLjIgMjguNCAyMy45IDI3LjlDMjMuOSAyNy44IDI0LjIgMjcuNyAyNC41IDI3LjZDMjYuMyAyNi4zIDI4IDI0LjYgMjguOSAyMi45QzI5LjUgMjIuMiAyOS43IDIxLjYgMjkuOSAyMC43QzMwLjEgMjAgMzAuMiAxOS45IDMwLjQgMjAuMloiLz48L3N2Zz4K",
@@ -721,10 +721,35 @@ function toolInstructions(tools) {
     JSON.stringify([...tools.allowed.values()]),
     "These client functions are available through a text bridge. For a native function call, emit one marker per call; the bridge converts it to the caller\u2019s tool_calls field.",
     '<client_tool_call>{"name":' + JSON.stringify(names.length === 1 ? names[0] : "FUNCTION_NAME") + ',"arguments":{}}</client_tool_call>',
-    "Use the actual arguments from the task, following the declared parameter schema. Output the marker alone and wait for the caller to return the result.",
+    "When requesting a function, use the actual arguments from the task and follow its parameter schema. Output the marker alone and wait for the caller to return the result.",
     tools.required && (names.length === 1 ? "You must call " + JSON.stringify(names[0]) + " this turn." : "You must call at least one listed function this turn."),
     !tools.parallel && "Call at most one function in this turn."
   ].filter(Boolean).join(`
+`);
+}
+function historyFunction(fn) {
+  if (!fn || typeof fn.name !== "string")
+    badRequest("Invalid assistant tool-call history.");
+  return { name: fn.name, arguments: fn.arguments ?? "{}" };
+}
+function conversationText(history) {
+  const latest = history.at(-1);
+  if (history.length === 1 && latest.role === "user")
+    return latest.content;
+  const hasTools = history.some((m) => m.tool_calls || m.function_call || m.role === "tool" || m.role === "function");
+  if (!hasTools)
+    return history.map((m) => (m.role === "user" ? "User: " : "Assistant: ") + m.content).join(`
+
+`);
+  const parts = [
+    "Continue this API conversation as the assistant. Client tools run in the calling application. Each tool or function message contains the result returned by that application. Match it to the assistant call by tool_call_id, or by name for a legacy function result.",
+    JSON.stringify(history)
+  ];
+  if (latest.role === "tool" || latest.role === "function") {
+    parts.push("Use the returned tool data to continue the user\u2019s task. If the completed call supplied the requested answer, respond now in the exact format the user requested. Request a further call only if the current task or tool choice requires one.");
+  }
+  return parts.join(`
+
 `);
 }
 function prepareTurn(body) {
@@ -748,28 +773,31 @@ function prepareTurn(body) {
       case "user":
         if (text.trim()) {
           lastUser = text;
-          history.push(["User", text]);
+          history.push({ role: "user", content: text });
         }
         break;
       case "assistant": {
-        if (text)
-          history.push(["Assistant", text]);
         const calls = message.tool_calls ?? [];
         if (!Array.isArray(calls))
           badRequest("Invalid assistant tool-call history.");
-        for (const call of [...calls, ...message.function_call ? [{ function: message.function_call }] : []]) {
-          const fn = call?.function;
-          if (!fn || typeof fn.name !== "string")
-            badRequest("Invalid assistant tool-call history.");
-          if (call.id)
-            names.set(call.id, fn.name);
-          history.push(["Assistant tool call", JSON.stringify({ id: call.id, name: fn.name, arguments: fn.arguments ?? "{}" })]);
+        const assistant = { role: "assistant", content: text || null };
+        if (calls.length) {
+          assistant.tool_calls = calls.map((call) => {
+            const fn = historyFunction(call?.function);
+            if (call.id)
+              names.set(call.id, fn.name);
+            return { id: call.id, type: "function", function: fn };
+          });
         }
+        if (message.function_call)
+          assistant.function_call = historyFunction(message.function_call);
+        if (text || assistant.tool_calls || assistant.function_call)
+          history.push(assistant);
         break;
       }
       case "tool":
       case "function":
-        history.push(["Tool result", JSON.stringify({ id: message.tool_call_id, name: message.name ?? names.get(message.tool_call_id), content: text })]);
+        history.push({ role: message.role, tool_call_id: message.tool_call_id, name: message.name ?? names.get(message.tool_call_id), content: text });
         break;
       default:
         badRequest("Unsupported message role.");
@@ -777,9 +805,7 @@ function prepareTurn(body) {
   }
   if (!history.length)
     badRequest("messages contain no user text, assistant text, or tool history.");
-  let prompt = history.length === 1 && history[0][0] === "User" ? history[0][1] : history.map(([label, text]) => label + ": " + text).join(`
-
-`);
+  let prompt = conversationText(history);
   if (tools.enabled) {
     const protocol = toolInstructions(tools);
     if (tools.required) {

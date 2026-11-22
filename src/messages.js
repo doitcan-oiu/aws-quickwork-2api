@@ -51,10 +51,33 @@ function toolInstructions(tools) {
     JSON.stringify([...tools.allowed.values()]),
     'These client functions are available through a text bridge. For a native function call, emit one marker per call; the bridge converts it to the caller’s tool_calls field.',
     '<client_tool_call>{"name":' + JSON.stringify(names.length === 1 ? names[0] : 'FUNCTION_NAME') + ',"arguments":{}}</client_tool_call>',
-    'Use the actual arguments from the task, following the declared parameter schema. Output the marker alone and wait for the caller to return the result.',
+    'When requesting a function, use the actual arguments from the task and follow its parameter schema. Output the marker alone and wait for the caller to return the result.',
     tools.required && (names.length === 1 ? 'You must call ' + JSON.stringify(names[0]) + ' this turn.' : 'You must call at least one listed function this turn.'),
     !tools.parallel && 'Call at most one function in this turn.',
   ].filter(Boolean).join('\n')
+}
+
+function historyFunction(fn) {
+  if (!fn || typeof fn.name !== 'string') badRequest('Invalid assistant tool-call history.')
+  return { name: fn.name, arguments: fn.arguments ?? '{}' }
+}
+
+function conversationText(history) {
+  const latest = history.at(-1)
+  if (history.length === 1 && latest.role === 'user') return latest.content
+  const hasTools = history.some(m => m.tool_calls || m.function_call || m.role === 'tool' || m.role === 'function')
+  if (!hasTools) return history.map(m => (m.role === 'user' ? 'User: ' : 'Assistant: ') + m.content).join('\n\n')
+
+  // Quick accepts one user_message. Encode the roles and IDs separately from
+  // the contents so text inside a message cannot add another transcript entry.
+  const parts = [
+    'Continue this API conversation as the assistant. Client tools run in the calling application. Each tool or function message contains the result returned by that application. Match it to the assistant call by tool_call_id, or by name for a legacy function result.',
+    JSON.stringify(history),
+  ]
+  if (latest.role === 'tool' || latest.role === 'function') {
+    parts.push('Use the returned tool data to continue the user’s task. If the completed call supplied the requested answer, respond now in the exact format the user requested. Request a further call only if the current task or tool choice requires one.')
+  }
+  return parts.join('\n\n')
 }
 
 export function prepareTurn(body) {
@@ -72,32 +95,33 @@ export function prepareTurn(body) {
         if (text) system.push(text)
         break
       case 'user':
-        if (text.trim()) { lastUser = text; history.push(['User', text]) }
+        if (text.trim()) { lastUser = text; history.push({ role: 'user', content: text }) }
         break
       case 'assistant': {
-        if (text) history.push(['Assistant', text])
         const calls = message.tool_calls ?? []
         if (!Array.isArray(calls)) badRequest('Invalid assistant tool-call history.')
-        for (const call of [...calls, ...(message.function_call ? [{ function: message.function_call }] : [])]) {
-          const fn = call?.function
-          if (!fn || typeof fn.name !== 'string') badRequest('Invalid assistant tool-call history.')
-          if (call.id) names.set(call.id, fn.name)
-          history.push(['Assistant tool call', JSON.stringify({ id: call.id, name: fn.name, arguments: fn.arguments ?? '{}' })])
+        const assistant = { role: 'assistant', content: text || null }
+        if (calls.length) {
+          assistant.tool_calls = calls.map(call => {
+            const fn = historyFunction(call?.function)
+            if (call.id) names.set(call.id, fn.name)
+            return { id: call.id, type: 'function', function: fn }
+          })
         }
+        if (message.function_call) assistant.function_call = historyFunction(message.function_call)
+        if (text || assistant.tool_calls || assistant.function_call) history.push(assistant)
         break
       }
       case 'tool':
       case 'function':
-        history.push(['Tool result', JSON.stringify({ id: message.tool_call_id, name: message.name ?? names.get(message.tool_call_id), content: text })])
+        history.push({ role: message.role, tool_call_id: message.tool_call_id, name: message.name ?? names.get(message.tool_call_id), content: text })
         break
       default:
         badRequest('Unsupported message role.')
     }
   }
   if (!history.length) badRequest('messages contain no user text, assistant text, or tool history.')
-  let prompt = history.length === 1 && history[0][0] === 'User'
-    ? history[0][1]
-    : history.map(([label, text]) => label + ': ' + text).join('\n\n')
+  let prompt = conversationText(history)
   if (tools.enabled) {
     const protocol = toolInstructions(tools)
     if (tools.required) {
