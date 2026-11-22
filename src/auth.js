@@ -1,6 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { createServer, get as httpGet } from 'node:http'
-import { registerWizardSession } from './login-wizard.js'
+import { createServer } from 'node:http'
 import { defaultOptions, regionPattern } from './options.js'
 
 const dataPlane = 'https://cell001.dp.appintegrations.us-east-1.prod.plato.ai.aws.dev'
@@ -199,7 +198,7 @@ async function discover(provider, query, region, redirect, signal) {
   return { meta, authorize }
 }
 
-async function signIn(provider, { appVersion = defaultOptions.appVersion, region: configuredRegion }, options = {}, wizardAvailable) {
+async function signIn(provider, { appVersion = defaultOptions.appVersion, region: configuredRegion }, options = {}) {
   const region = configuredRegion || process.env.AMAZON_QUICK_REGION || 'us-east-1'
   if (!regionPattern.test(region)) throw new Error('Invalid Amazon Quick login region')
   options.signal?.throwIfAborted()
@@ -265,11 +264,10 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
       finish({ type: 'failed', error: err instanceof Error ? err.message : 'Amazon Quick sign-in failed' })
     }
   })
-  let timer, callbackSignal, unregisterWizard
+  let timer, callbackSignal
   const abort = () => finish({ type: 'failed', error: 'Amazon Quick sign-in cancelled or timed out' })
   function finish(value) {
     if (lifetime.signal.aborted) return
-    unregisterWizard?.()
     clearTimeout(timer)
     options.signal?.removeEventListener('abort', abort)
     callbackSignal?.removeEventListener('abort', abort)
@@ -287,26 +285,6 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
   server.on('error', () => finish({ type: 'failed', error: 'Amazon Quick callback listener failed' }))
   port = server.address().port
   redirect = 'http://' + (provider === 'enterprise' ? 'localhost:' : '127.0.0.1:') + port
-  if (wizardAvailable) {
-    unregisterWizard = registerWizardSession(port, {
-      firstNonce: nonce,
-      async onCallback(step, url) {
-        if (step === 2 && (!discovery || url.searchParams.get('state') !== state)) throw new Error('Invalid authorization callback')
-        // Send both ways of pasting through the same listener, including the
-        // per-account proxy context Magpie attached when it started this login.
-        return new Promise((resolve, reject) => {
-          const request = httpGet({ hostname: '127.0.0.1', port, path: url.pathname + url.search, agent: false }, response => {
-            response.resume()
-            if (step === 1 && response.statusCode === 302 && response.headers.location) {
-              resolve({ step: 2, url: response.headers.location })
-            } else if (step === 2 && response.statusCode === 200) resolve({ done: true })
-            else reject(new Error('Callback rejected'))
-          })
-          request.on('error', reject)
-        })
-      },
-    })
-  }
   timer = setTimeout(abort, 10 * 60_000)
   timer.unref?.()
   options.signal?.addEventListener('abort', abort, { once: true })
@@ -316,11 +294,8 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
     method: 'auto',
     // Magpie leaves opening the URL to the user when the plugin handles it.
     opened: true,
-    instructions: wizardAvailable
-      ? '复制下方登录链接，用无痕窗口或其他浏览器登录 AWS。两条回调都粘贴到 Magpie 左侧的「Quick 登录」向导，那里会显示当前步骤。'
-      : '复制下方登录链接，用你选择的浏览器或无痕窗口打开。' +
-      '如果回调页面打不开，把地址栏里的完整地址粘贴到 Magpie 的回调输入框并提交。' +
-      '等链接更新后，复制新链接到同一个浏览器窗口继续授权，再粘贴第二个完整回调地址并提交。',
+    instructions: '第 1 步 · 登录 AWS。复制下方链接到无痕窗口或其他浏览器登录。若回调页打不开，把第一条完整回调地址粘贴到「回调 URL」并提交。\n' +
+      '第 2 步 · 完成授权。卡片链接更新后，复制新链接到刚才的窗口完成授权，再在同一输入框提交第二条完整回调地址。',
     async callback(_code, context = {}) {
       callbackSignal = context.signal
       callbackSignal?.addEventListener('abort', abort, { once: true })
@@ -330,9 +305,9 @@ async function signIn(provider, { appVersion = defaultOptions.appVersion, region
   }
 }
 
-export function createAuthMethods(clientOptions = defaultOptions, wizardAvailable = false) {
+export function createAuthMethods(clientOptions = defaultOptions) {
   return [
-    { type: 'oauth', label: 'Amazon Quick 个人账号', authorize: (_inputs, context) => signIn('social', clientOptions, context, wizardAvailable) },
-    { type: 'oauth', label: 'Amazon Quick 企业账号', authorize: (_inputs, context) => signIn('enterprise', clientOptions, context, wizardAvailable) },
+    { type: 'oauth', label: 'Amazon Quick 个人账号', authorize: (_inputs, context) => signIn('social', clientOptions, context) },
+    { type: 'oauth', label: 'Amazon Quick 企业账号', authorize: (_inputs, context) => signIn('enterprise', clientOptions, context) },
   ]
 }

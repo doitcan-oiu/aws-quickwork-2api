@@ -2,7 +2,6 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createAuthMethods, getSession, refreshAuth, sessionFromAuth } from './src/auth.js'
 import { createChatFetch } from './src/chat.js'
-import { startLoginWizard } from './src/login-wizard.js'
 import { readOptions } from './src/options.js'
 import { accountUsage, recordTurn } from './src/usage.js'
 
@@ -16,15 +15,6 @@ const models = Object.fromEntries(['smart', 'fast', 'balanced', 'auto'].map(mode
 export async function AmazonQuickPlugin({ client, directory, magpie }, options = {}) {
   const dataDir = magpie && directory ? directory : join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'magpie')
   const clientOptions = readOptions(options)
-  let wizardAvailable = false
-  if (magpie) {
-    try {
-      await startLoginWizard(clientOptions.loginWizardPort)
-      wizardAvailable = true
-    } catch {
-      await client.app?.log?.({ body: { service: provider, level: 'warn', message: '登录向导端口无法监听。可使用供应商卡片完成登录，或在插件高级设置中更改端口。' } })
-    }
-  }
   return {
     async config(config) {
       config.provider ??= {}
@@ -35,7 +25,7 @@ export async function AmazonQuickPlugin({ client, directory, magpie }, options =
     },
     auth: {
       provider,
-      methods: createAuthMethods(clientOptions, wizardAvailable),
+      methods: createAuthMethods(clientOptions),
       refresh: refreshAuth,
       async usage(getAuth) {
         return accountUsage(dataDir, sessionFromAuth(await getAuth()), clientOptions.monthlyHours)

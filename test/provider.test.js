@@ -47,7 +47,7 @@ test('invalid saved client metadata fails before opening a connection', async ()
     ['appVersion', '2.5:fake-port'], ['surface', 'surface\r\nextra:header'],
     ['workingSessionId', 'id\nsecret'], ['region', 'us-east-1.example.com'],
     ['timezone', 'Nowhere/Invalid'], ['locale', 'zh_TW'], ['requestTimeoutSeconds', 2_147_484],
-    ['thinkingEffort', 'other'], ['keepSessions', 'false'], ['loginWizardPort', 65536],
+    ['thinkingEffort', 'other'], ['keepSessions', 'false'],
   ]
   for (const [key, value] of invalid) {
     await assert.rejects(AmazonQuickPlugin({ client: {} }, { [key]: value }), e => e.field === key)
