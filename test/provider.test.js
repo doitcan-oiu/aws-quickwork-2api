@@ -47,7 +47,7 @@ test('invalid saved client metadata fails before opening a connection', async ()
     ['appVersion', '2.5:fake-port'], ['surface', 'surface\r\nextra:header'],
     ['workingSessionId', 'id\nsecret'], ['region', 'us-east-1.example.com'],
     ['timezone', 'Nowhere/Invalid'], ['locale', 'zh_TW'], ['requestTimeoutSeconds', 2_147_484],
-    ['thinkingEffort', 'other'], ['keepSessions', 'false'],
+    ['thinkingEffort', 'other'], ['keepSessions', 'false'], ['chatAgentId', 'bad\nvalue'], ['sessionTtlMinutes', 0],
   ]
   for (const [key, value] of invalid) {
     await assert.rejects(AmazonQuickPlugin({ client: {} }, { [key]: value }), e => e.field === key)
@@ -180,6 +180,11 @@ test('a streamed error after the first delta terminates the response without lea
   assert.match(body, /"code":502/)
   assert.doesNotMatch(body, /private upstream detail/)
   assert.ok(body.endsWith('data: [DONE]\n\n'))
+})
+
+test('whitespace-only upstream stops are errors for both JSON and SSE', async () => {
+  const fetch = client(async function* () { yield { type: 'text', text: ' \n\u200b' } })
+  for (const stream of [true, false]) assert.equal((await post(fetch, { ...req, stream })).status, 502)
 })
 
 test('cancelling the response closes the upstream stream', { timeout: 3000 }, async () => {

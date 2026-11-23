@@ -6,6 +6,7 @@ import { createChatFetch } from '../src/chat.js'
 import { defaultOptions } from '../src/options.js'
 import { decodeQuickFrame, encodeQuickFrame } from '../src/wire.js'
 import { streamQuick } from '../src/transport.js'
+import { relayPrompt } from '../src/messages.js'
 
 const session = { provider: 'social', jwt: 'test-only', wsHost: 'example.plato.ai.aws.dev', actorArn: 'user' }
 const message = { prompt: 'Say hello', systemPrompt: 'Be concise', model: 'fast' }
@@ -253,4 +254,99 @@ test('credential targets and handshake failures are checked before any usage is 
   }
   await assert.rejects(streamQuick(session, input, undefined, connect).next(), e => e.status === 403)
   assert.equal(timings.length, 0)
+})
+
+test('Quick frame budget is measured in encoded inner JSON bytes and never truncates Gateway input', async () => {
+  const gateway = { ...session, provider: 'gateway' }
+  async function round(text) {
+    const fixture = socketFixture(socket => emit(socket, 'turn_completed'), true)
+    const events = streamQuick(gateway, { ...message, prompt: text }, undefined, fixture.connect)
+    return { fixture, done: events.next() }
+  }
+  const small = await round('a')
+  await small.done
+  const overhead = Buffer.byteLength(JSON.stringify(small.fixture.sent.find(e => e.type === 'user_message'))) - 1
+  const part = '你"'
+  const budget = 63 * 1024 - overhead
+  const content = part.repeat(Math.floor(budget / 5)) + 'a'.repeat(budget % 5)
+  const exact = await round(content)
+  await exact.done
+  const sent = exact.fixture.sent.find(e => e.type === 'user_message')
+  assert.equal(Buffer.byteLength(JSON.stringify(sent)), 63 * 1024)
+  assert.equal(sent.payload.text, content)
+  const over = await round(content + 'a')
+  await assert.rejects(over.done, { status: 413 })
+  assert.equal(over.fixture.sent.some(e => e.type === 'user_message'), false)
+  assert.equal(over.fixture.sent.at(-1).type, 'session_delete')
+})
+
+test('oversized AIDP transcript becomes a single attachment and instructions stay inline', async t => {
+  const tenant = 'https://' + session.wsHost
+  const transcript = '甲\n"'.repeat(20000) + 'END'
+  const systemPrompt = 'Use client-defined tools.'
+  const input = { ...message, systemPrompt, transcript, prompt: relayPrompt(systemPrompt, transcript) }
+  const upload = t.mock.method(globalThis, 'fetch', async (url, init) => {
+    assert.ok(String(url).startsWith(tenant + '/integration/quick-work/upload-attachment?'))
+    assert.equal(Buffer.from(init.body).toString(), transcript)
+    return Response.json({ path: '/workspace/prompt.txt' })
+  })
+  const fixture = socketFixture(socket => emit(socket, 'turn_completed'))
+  await streamQuick({ ...session, tenant }, input, undefined, fixture.connect).next()
+  assert.equal(upload.mock.callCount(), 1)
+  const frame = fixture.sent.find(e => e.type === 'user_message')
+  assert.ok(Buffer.byteLength(JSON.stringify(frame)) < 63 * 1024)
+  assert.ok(frame.payload.text.includes(systemPrompt))
+  assert.ok(frame.payload.text.includes(frame.payload.attachments[0].name))
+  assert.equal(frame.payload.attachments[0].size, Buffer.byteLength(transcript))
+  assert.equal('system_prompt' in frame.payload, false)
+
+  const oversizedSystem = 's'.repeat(65536)
+  const next = socketFixture(() => assert.fail('oversized instructions should not be sent'))
+  const stream = streamQuick({ ...session, tenant }, {
+    ...input, systemPrompt: oversizedSystem, prompt: relayPrompt(oversizedSystem, transcript),
+  }, undefined, next.connect)
+  await assert.rejects(stream.next(), { status: 413 })
+  assert.equal(upload.mock.callCount(), 1)
+})
+
+test('a resumed session reports a missing thread only before output and skips session_create', async () => {
+  for (const [initialText, code, missing, status] of [
+    [false, 'SessionNotFoundException', true, 404], [true, 'SESSION_NOT_FOUND', false, 404],
+    [false, 404, false, 404], [false, 'ThrottlingException', false, 429],
+  ]) {
+    const fixture = socketFixture(socket => {
+      if (initialText) emit(socket, 'text_delta', { text: 'hello' })
+      socket.emit('message', Buffer.from(JSON.stringify({ type: 'turn_failed', code, message: 'sensitive detail' })), false)
+    })
+    const stream = streamQuick(session, { ...message, threadId: 'thread-A', createSession: false, keepSession: true }, undefined, fixture.connect)
+    if (initialText) assert.equal((await stream.next()).value.text, 'hello')
+    await assert.rejects(stream.next(), err =>
+      err.status === status && Boolean(err.sessionMissing) === missing && !err.message.includes('sensitive detail'))
+    assert.deepEqual(fixture.sent.map(e => e.type), ['session_connect', 'federate_status', 'user_message'])
+    assert.equal(fixture.sent.at(-1).payload.thread_id, 'thread-A')
+  }
+})
+
+test('native tool snapshots take precedence over late progress and result-only events', async () => {
+  const fixture = socketFixture(socket => {
+    emit(socket, 'tool_result', { name: 'completed_elsewhere', id: 'already-finished', arguments: {} })
+    emit(socket, 'tool_start', { tool_id: 't', tool_name: 'weather', arguments: {} })
+    emit(socket, 'tool_progress', { tool_id: 't', progress: { input_delta: '{"city":' } })
+    emit(socket, 'tool_arguments', { tool_id: 't', arguments: { city: 'Bonn' } })
+    emit(socket, 'tool_progress', { tool_id: 't', input_delta: '"Bonn"}' })
+    emit(socket, 'tool_complete', { toolCallId: 't', title: 'Look up the weather' })
+    emit(socket, 'turn_completed')
+  })
+  const calls = []
+  for await (const event of streamQuick(session, message, undefined, fixture.connect)) calls.push(event)
+  assert.deepEqual(calls, [{ type: 'tool', id: 't', name: 'weather', arguments: '{"city":"Bonn"}' }])
+})
+
+test('a bad second event keeps the first event in the same WebSocket packet', async () => {
+  const bad = Buffer.from(aidpReply)
+  bad[bad.length - 1] ^= 1
+  const fixture = socketFixture(socket => socket.emit('message', Buffer.concat([aidpReply, bad]), true))
+  const stream = streamQuick(session, message, undefined, fixture.connect)
+  assert.deepEqual((await stream.next()).value, { type: 'text', text: 'hello' })
+  await assert.rejects(stream.next(), { status: 502 })
 })

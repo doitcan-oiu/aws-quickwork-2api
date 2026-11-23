@@ -2,11 +2,16 @@ import { randomUUID } from 'node:crypto'
 import { EventEmitter, on } from 'node:events'
 import WebSocket from 'ws'
 import { isQuickHost } from './auth.js'
+import { uploadPromptAttachment } from './attachments.js'
+import { relayPrompt } from './messages.js'
 import { defaultOptions } from './options.js'
-import { decodeQuickFrame, encodeQuickFrame, quickError, upstreamFailure } from './wire.js'
+import { quickEvents, encodeQuickFrame, quickError, upstreamFailure } from './wire.js'
 
 const aidpPath = '/streaming/quickwork-chat-bidirectional-stream'
 const gatewayPath = '/ws/service/SpaceNeedleConversationService/operation/ChatBidirectionalStream'
+// Allow Quick's 1 KiB margin below the 64 KiB inner JSON limit. The AIDP
+// base64 and the Gateway event-stream envelopes do not count towards it.
+const userMessageBudget = 63 * 1024
 const terminal = new Set(['turn_completed', 'turn_ended', 'stream_ended', 'chat_complete'])
 const toolEvents = new Set(['tool_start', 'tool_arguments', 'tool_arguments_edited', 'tool_progress',
   'tool_result', 'tool_error', 'tool_complete', 'tool_call', 'tool_call_update'])
@@ -46,18 +51,44 @@ function usageEvent(p) {
   return usage
 }
 
-function rememberTool(tools, p) {
-  const name = p.tool_name || p.name || p.function?.name || p.title
+function rememberTool(tools, type, p) {
+  if (type === 'tool_result' || type === 'tool_error') return
+  const name = p.tool_name || p.name || p.function?.name
   const fromWire = p.tool_id || p.tool_call_id || p.toolCallId || p.id
-  if (!fromWire && !name) return
-  const key = fromWire || name
+  const key = fromWire || name || p.title
+  if (!key) return
   const tool = tools.get(key) || { type: 'tool', id: fromWire || 'call_' + randomUUID(), name: '', arguments: '' }
   if (typeof name === 'string') tool.name = name
+  else if (!tool.name && typeof p.title === 'string') tool.name = p.title
   const args = p.arguments ?? p.function?.arguments ?? p.rawInput ?? p.raw_input
   const delta = p.input_delta ?? p.progress?.input_delta
-  if (args != null) tool.arguments = typeof args === 'string' ? args : JSON.stringify(args)
-  else if (typeof delta === 'string') tool.arguments += delta
+  if (args != null) {
+    tool.arguments = typeof args === 'string' ? args : JSON.stringify(args)
+    // tool_start may contain an empty placeholder before the first delta.
+    if (type === 'tool_start' && tool.arguments.trim() === '{}') tool.arguments = ''
+    tool.finalized = Boolean(tool.arguments)
+  } else if (!tool.finalized && typeof delta === 'string') tool.arguments += delta
   tools.set(key, tool)
+}
+
+function userMessageFits(payload) {
+  return Buffer.byteLength(JSON.stringify({ type: 'user_message', payload })) <= userMessageBudget
+}
+
+async function fitUserMessage(payload, input, session, gateway, signal) {
+  if (userMessageFits(payload)) return payload
+  const tooLarge = () => Object.assign(quickError('This turn exceeds the Amazon Quick 64 KiB message limit.', 413), { expose: true })
+  if (gateway || !session.tenant) throw tooLarge()
+  const name = 'prompt-' + payload.message_id + '.txt'
+  const attachmentCue = 'Read the full user message for this turn in the attached file ' + name + ' and respond to it.'
+  const text = input.transcript === undefined ? attachmentCue : relayPrompt(input.systemPrompt, attachmentCue)
+  const outgoing = { ...payload, text }
+  // Keep the instructions inline; never silently cut the schema or history to fit.
+  if (!userMessageFits(outgoing)) throw tooLarge()
+  const attachment = await uploadPromptAttachment(session, payload.thread_id, name, input.transcript ?? input.prompt, signal)
+  outgoing.attachments = [attachment]
+  if (!userMessageFits(outgoing)) throw tooLarge()
+  return outgoing
 }
 
 // This timestamp is taken in the socket handler. A slow downstream consumer
@@ -75,6 +106,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
   const gateway = session.provider === 'gateway' || session.provider === 'social_gateway'
   const options = input.clientOptions ?? defaultOptions
   const { appVersion, surface, outpostId, workingSessionId } = options
+  const keepSession = input.keepSession ?? options.keepSessions
   const url = destination(session, gateway, options)
   const thread = input.threadId || randomUUID()
   const title = input.title || Array.from(input.prompt.replace(/\s+/g, ' ').trim()).slice(0, 60).join('')
@@ -94,10 +126,14 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
   const packets = on(bus, 'packet')
   const push = (packet) => bus.emit('packet', packet)
   let started, progress, completed, quietTimer, idleTimer
+  let created = false, success = false
+  const upload = new AbortController()
   function closeConnection() {
     if (socket.readyState === WebSocket.OPEN) {
       try {
-        if (started && !options.keepSessions) send('session_delete', { session_id: thread })
+        if ((!keepSession && (created || started)) || (created && !success && input.keepSession === true)) {
+          send('session_delete', { session_id: thread })
+        }
         socket.close()
       } catch { socket.terminate() }
     } else if (socket.readyState === WebSocket.CONNECTING) socket.terminate()
@@ -110,17 +146,26 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
   socket.on('error', (error) => {
     const match = /^Unexpected server response: ([1-5]\d{2})$/.exec(error.message)
     const status = match ? Number(match[1]) : 502
-    push({ error: quickError('Amazon Quick connection failed (HTTP ' + status + ')', status) })
+    const failure = quickError('Amazon Quick connection failed (HTTP ' + status + ')', status)
+    upload.abort(failure)
+    push({ error: failure })
   })
-  socket.once('close', (code) => push({ kind: 'closed', code }))
+  socket.once('close', (code) => {
+    upload.abort(quickError('Amazon Quick closed the connection (' + code + ')'))
+    push({ kind: 'closed', code })
+  })
   function abort() {
-    push({ error: abortError() })
+    const error = abortError()
+    upload.abort(error)
+    push({ error })
     closeConnection()
   }
   signal?.addEventListener('abort', abort, { once: true })
   if (signal?.aborted) abort()
   const deadline = setTimeout(() => {
-    push({ error: quickError('Amazon Quick request timed out', 504) })
+    const error = quickError('Amazon Quick request timed out', 504)
+    upload.abort(error)
+    push({ error })
     closeConnection()
   }, options.requestTimeoutSeconds * 1000)
   const keepalive = setInterval(() => {
@@ -146,16 +191,22 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
             appVersion, external_agent_sign_in: 1, recents_promotion: 1 })
         }
         send('federate_status', {})
-        send('session_create', { session_id: thread, title })
-        send('user_message', {
+        if (input.createSession !== false) {
+          send('session_create', { session_id: thread, title })
+          created = true
+        }
+        const payload = {
           text: input.prompt, send_origin: 'programmatic', had_physical_input: false,
           surfaceType: surface, outpostId, appVersion, traceId: randomUUID(),
           message_id: randomUUID(), thread_id: thread, agent_mode: input.model || 'smart',
-          user_timezone: options.timezone, user_locale: options.locale, chat_agent_id: null, auto_routing: false,
+          user_timezone: options.timezone, user_locale: options.locale, chat_agent_id: input.chatAgentId || options.chatAgentId || null, auto_routing: false,
           web_search_enabled: false, pre_approved_tools: [], preload_skills: [], panel_edits: [],
-          custom_prompt: null, ...(input.systemPrompt ? { system_prompt: input.systemPrompt } : {}),
+          custom_prompt: null, ...(input.transcript === undefined && input.systemPrompt ? { system_prompt: input.systemPrompt } : {}),
           ...(options.thinkingEffort !== 'off' ? { thinking_effort: options.thinkingEffort } : {}),
-        })
+        }
+        const fitted = await fitUserMessage(payload, input, session, gateway, upload.signal)
+        upload.signal.throwIfAborted()
+        send('user_message', fitted)
         started = stamp()
         idleTimer = setTimeout(() => push({ kind: 'idle' }), 120_000)
         continue
@@ -169,7 +220,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
         if (progress && (completed || packet.code === 1000)) break
         throw quickError('Amazon Quick closed the connection (' + packet.code + ')')
       }
-      for (const event of decodeQuickFrame(packet.data, packet.binary, gateway)) {
+      for (const event of quickEvents(packet.data, packet.binary, gateway)) {
         if (signal?.aborted) throw abortError()
         const type = event?.type
         const p = event?.payload ?? {}
@@ -197,12 +248,12 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
           if (usage.duration_ms !== undefined || usage.total_tokens > 0) progress = packet.at
           yield usage
         } else if (toolEvents.has(type)) {
-          rememberTool(tools, p)
-          if (tools.size) progress = packet.at
+          rememberTool(tools, type, p)
+          progress = packet.at
           completed = undefined
           clearTimeout(quietTimer)
         } else if (type === 'message_complete') {
-          for (const tool of p.tool_calls || []) rememberTool(tools, tool)
+          for (const tool of p.tool_calls || []) rememberTool(tools, type, tool)
           if (p.tool_calls?.length) progress = packet.at
           clearTimeout(quietTimer)
           completed = p.continuation_expected ? undefined : (completed || packet.at)
@@ -213,7 +264,7 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
           completed ||= packet.at
           break loop
         } else if (['error', 'turn_failed', 'session_error', 'stream_error', 'turn_aborted'].includes(type)) {
-          throw upstreamFailure(p.status_code || p.code || event.error_code)
+          throw upstreamFailure(p.status_code, event.status_code, p.code, p.error_code, p.error?.code, event.code, event.error_code)
         } else if (type === 'ping' && socket.readyState === WebSocket.OPEN) {
           socket.pong()
         }
@@ -221,9 +272,14 @@ export async function* streamQuick(session, input, signal, connect = (url, optio
     }
     for (const tool of tools.values()) {
       if (signal?.aborted) throw abortError()
-      if (tool.name) yield { ...tool, arguments: tool.arguments || '{}' }
+      if (tool.name) yield { type: 'tool', id: tool.id, name: tool.name, arguments: tool.arguments || '{}' }
     }
+    success = Boolean(textMessages.size || tools.size)
   } catch (error) {
+    if (error?.sessionMissing && (input.createSession !== false || progress)) delete error.sessionMissing
+    if (signal?.aborted) throw abortError()
+    if (error?.name === 'AbortError' && upload.signal.aborted) throw upload.signal.reason
+    if (error?.name === 'TimeoutError') throw quickError('Amazon Quick request timed out', 504)
     if (error?.status) throw error
     throw quickError('Could not process the Amazon Quick stream')
   } finally {

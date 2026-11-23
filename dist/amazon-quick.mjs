@@ -9,7 +9,7 @@ import { createServer } from "http";
 // package.json
 var package_default = {
   name: "magpie-amazon-quick",
-  version: "1.3.3",
+  version: "1.4.0",
   description: "Amazon Quick subscription provider for Magpie",
   magpie: {
     icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHN0eWxlPnBhdGh7ZmlsbDojMWMxYzFlfUBtZWRpYSAocHJlZmVycy1jb2xvci1zY2hlbWU6ZGFyayl7cGF0aHtmaWxsOiNmMmYyZjJ9fTwvc3R5bGU+PHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMS41IDUuNUMxLjMgNS43IDEuMiA2LjUgMS4yIDYuOUMxLjIgNi45IDEuMiA3IDEuMiA3LjFDMS4xIDcuNCAxLjMgOCAxLjQgOC4zQzEuNCA4LjQgMS41IDguNSAxLjUgOC43QzEuNSA4LjkgMS43IDkgMS44IDkuM0MyLjIgOS45IDIuMiAxMCAyLjMgMTAuMUMyLjQgMTAuMiAyLjUgMTAuMyAyLjYgMTAuNUMyLjggMTAuOCAzIDExLjEgMy4yIDExLjNDMy4zIDExLjMgMy40IDExLjYgMy42IDExLjhDMy44IDEyIDQuMSAxMi40IDQuMiAxMi41QzQuNyAxMyA1LjIgMTMuNyA1LjQgMTMuOUM2IDE0LjUgNi41IDE1LjEgNi43IDE1LjNDNi43IDE1LjQgNi45IDE1LjUgNi45IDE1LjdDNy4zIDE1LjkgNy43IDE2LjUgNy45IDE2LjhDNy45IDE2LjggOCAxNi45IDggMTYuOUM4LjEgMTYuOSA4LjIgMTcuMiA4LjIgMTcuM0M4LjIgMTcuMyA4LjEgMTcuMiA4LjEgMTcuMUM3LjkgMTYuOSA3LjkgMTYuOSA3LjYgMTYuNkM3LjUgMTYuNSA3LjQgMTYuNSA3LjQgMTYuM0M3LjIgMTYuMiA2LjcgMTUuNyA2LjMgMTUuMkM2LjEgMTUuMSA2IDE0LjkgNiAxNC45QzUuOSAxNC44IDUuNyAxNC43IDUuNyAxNC42QzUuNiAxNC41IDUuNCAxNC4zIDUuMyAxNC4yQzUuMSAxNC4xIDQuOSAxMy44IDQuNyAxMy41QzQuNSAxMy4zIDQuMiAxMy4xIDQuMSAxMi45QzQuMSAxMi45IDMuOCAxMi43IDMuOCAxMi41QzMuNSAxMi4zIDMgMTEuOCAyLjggMTEuNEMxLjggMTAuNSAwLjkgOS42IDAuNyA5LjZDMC42IDkuNyAwLjYgOS44IDAuNSAxMEMwLjUgMTAuMSAwLjYgMTAuMiAwLjUgMTAuM0MwLjUgMTAuNCAwLjYgMTAuNSAwLjYgMTAuNkMwLjUgMTAuNyAwLjUgMTAuOSAwLjYgMTFDMC41IDExLjEgMC42IDExLjQgMC42IDExLjVDMC45IDEyLjkgMS4zIDEzLjggMi44IDE0LjlDMi45IDE1LjEgMy4zIDE1LjMgMy40IDE1LjRDMy40IDE1LjUgMy42IDE1LjYgMy43IDE1LjdDNC4yIDE2IDYuNCAxNy44IDcgMTguNEM3LjQgMTguOCA3LjQgMTguOCA3LjUgMTguOUM3LjYgMTkgNy43IDE5IDcuNyAxOS4xQzcuNyAxOS4yIDcuOCAxOS4yIDcuOSAxOS4yQzcuOSAxOS4zIDguMSAxOS40IDguMSAxOS41QzguMiAxOS42IDguMiAxOS43IDguMyAxOS43QzguMyAxOS43IDguMyAxOS43IDguMiAxOS43QzguMiAxOS42IDguMSAxOS42IDggMTkuNkM3LjkgMTkuNSA3LjkgMTkuNCA3LjggMTkuNEM3LjcgMTkuMyA3LjYgMTkuMiA3LjYgMTkuMkM3LjYgMTkuMSA3LjUgMTkgNy4zIDE4LjlDNy4yIDE4LjkgNi45IDE4LjYgNi43IDE4LjRDNi4xIDE3LjggNC41IDE2LjYgMy41IDE2QzMuNCAxNS44IDMgMTUuNiAyLjkgMTUuNUMyLjYgMTUuMyAxLjUgMTQuNiAwLjkgMTQuM0MwLjcgMTQuMSAwLjYgMTQuMSAwLjYgMTQuMkMwLjUgMTQuNSAwLjggMTUuOSAwLjkgMTYuMUMwLjkgMTYuMiAxIDE2LjIgMC45IDE2LjNDMS4yIDE2LjggMS45IDE3LjYgMi43IDE4LjNDMi44IDE4LjUgNCAxOS4yIDQuNyAxOS41QzYuMiAyMC41IDYuNiAyMC43IDcuNCAyMS41QzguMiAyMi4yIDguNyAyMi43IDkuMyAyMy42QzkuNSAyNC4xIDkuOSAyNC40IDEwLjMgMjUuM0MxMC40IDI1LjUgMTAuNSAyNS44IDEwLjUgMjUuOEMxMC43IDI1LjggMTAuOCAyNS43IDExIDI1LjRDMTEuNiAyNSAxMS45IDI0LjYgMTIuMyAyNC4zQzEyLjggMjQgMTMgMjMuOCAxMyAyMy43QzEzLjEgMjMuNyAxMy4xIDIzLjggMTMgMjRDMTIgMjQuOCAxMSAyNiAxMC4yIDI2LjlDMTAuMSAyNy4xIDkuOSAyNy41IDkuNyAyNy43QzkuNSAyNy44IDkuNCAyOCA5LjQgMjhDOS40IDI4IDkuMyAyOC4zIDkuMSAyOC41QzguNiAyOS4yIDcuNyAzMC44IDcuNyAzMC45QzcuNyAzMSA3LjggMzEgOC4zIDMwLjhDOSAzMC40IDkuNSAzMC4yIDEwLjQgMzBDMTEuNyAyOS42IDEyLjUgMjkuNiAxMS42IDMwQzEwLjUgMzAuMiA5LjcgMzAuNiA5LjIgMzEuMkM4LjggMzEuNyA4LjggMzEuNyA5LjMgMzEuN0MxMC4xIDMxLjggMTAuOSAzMS45IDExLjYgMzIuMkMxMi44IDMyLjcgMTMuNSAzMy4xIDE1LjUgMzQuOEMxNi40IDM1LjUgMTcuMyAzNi4yIDE3LjggMzYuNEMxNy45IDM2LjUgMTguMSAzNi43IDE4LjIgMzYuOEMxOS4xIDM3LjMgMjEuMiAzOC4xIDIyLjMgMzguM0MyMi40IDM4LjMgMjIuNyAzOC4zIDIyLjggMzguM0MyMi44IDM4LjUgMjMgMzguNSAyMyAzOC41QzIzLjEgMzguNSAyMy4yIDM4LjUgMjMuMyAzOC41QzIzLjYgMzguNiAyNS45IDM4LjYgMjYuMSAzOC41QzI2LjIgMzguNSAyNi4zIDM4LjUgMjYuNCAzOC41QzI2LjUgMzguNSAyNi42IDM4LjUgMjYuNyAzOC4zQzI2LjcgMzguMyAyNyAzOC4zIDI3LjEgMzguM0MyOC4zIDM4LjEgMzAuMiAzNy4zIDMxLjQgMzYuN0MzMS41IDM2LjcgMzEuNyAzNi40IDMxLjggMzYuNEMzMi4yIDM2LjIgMzMuMiAzNS40IDMzLjQgMzUuMkMzNC4yIDM0LjUgMzUuNSAzMyAzNS44IDMyLjZDMzUuOCAzMi41IDM2IDMyLjIgMzYuMSAzMkMzNi40IDMxLjggMzYuNiAzMS40IDM2LjYgMzEuMkMzNi43IDMxLjEgMzYuOCAzMC45IDM2LjkgMzAuOEMzNy4yIDMwLjQgMzcuNSAyOS42IDM3LjcgMjkuMkMzNy43IDI5LjEgMzcuOCAyOC43IDM3LjkgMjguN0MzOC4xIDI4LjUgMzguNCAyNy4xIDM4LjUgMjYuOEMzOSAyNS4yIDM5LjEgMjMuNyAzOSAyMi40QzM5IDIyLjIgMzguOSAyMS45IDM4LjkgMjEuOEMzOC45IDIxLjcgMzguOSAyMS42IDM4LjkgMjEuNEMzOC42IDIwLjUgMzguNSAxOS45IDM4LjIgMTlDMzcuOSAxOC41IDM3LjUgMTcuNSAzNy4zIDE3LjJDMzcgMTYuOCAzNi44IDE1LjggMzYuOCAxNS4yQzM2LjggMTMuOCAzNy43IDEyLjcgMzkuNiAxMi4yQzQwLjEgMTIuMSA0MS4zIDExLjggNDIuMSAxMS43QzQzLjUgMTEuNSA0My41IDExLjUgNDMuNCAxMS4zQzQyLjkgMTAuNyA0MC45IDkuOSAzOS4yIDkuN0MzNy45IDkuNSAzOC4xIDkuNSAzNy42IDlDMzcgOC42IDM2LjQgOCAzNiA3LjlDMzYgNy44IDM1LjggNy44IDM1LjcgNy43QzM1LjEgNy4zIDM0LjIgNyAzMy4xIDYuOUMzMi42IDYuNyAzMS42IDYuOSAzMSA3QzI5LjYgNy4zIDI4LjMgOCAyNy4zIDkuMkMyNi43IDkuOCAyNi4yIDEwLjggMjUuNyAxMS43QzI1LjUgMTIuMSAyNC44IDEzLjQgMjQuNyAxMy43QzI0LjYgMTMuOSAyNC41IDE0LjEgMjQuMSAxNC43QzIzLjUgMTUuNyAyMi4xIDE2LjkgMjAuNiAxNy44QzIwLjUgMTggMjAuMyAxOC4yIDIwLjEgMTguM0MxOS43IDE4LjUgMTkuNCAxOC44IDE5LjEgMTlDMTguOSAxOS4xIDE4LjcgMTkuMyAxOC41IDE5LjRDMTggMTkuOCAxNy4yIDIwLjMgMTcgMjAuNUMxNi45IDIwLjUgMTYuOCAyMC42IDE2LjcgMjAuN0MxNi4zIDIwLjggMTYuMSAyMC45IDE2IDIwLjlDMTUuNSAyMC44IDE0LjkgMjAuNSAxNC4yIDIwLjJDMTMuNyAxOS44IDEyLjcgMTguOSAxMi40IDE4LjZDMTIuMyAxOC41IDEyLjIgMTguNCAxMi4xIDE4LjJDMTEuOSAxOCAxMS4yIDE3LjEgMTEgMTYuNkMxMC45IDE2LjUgMTAuOCAxNi40IDEwLjcgMTYuM0MxMC43IDE2LjIgMTAuNiAxNi4xIDEwLjYgMTUuOUMxMC41IDE1LjkgMTAuNCAxNS43IDEwLjQgMTUuNkMxMC4zIDE1LjUgMTAuMiAxNS4yIDEwLjEgMTVDMTAgMTQuOCA5LjggMTQuNCA5LjcgMTQuMkM5LjYgMTQgOS41IDEzLjcgOS40IDEzLjZDOS40IDEzLjQgOS4zIDEzLjIgOS4yIDEzQzkuMiAxMi44IDkgMTIuNiA5IDEyLjVDOC45IDEyLjMgOC43IDEyLjEgOC43IDEyQzguNyAxMiA4LjUgMTEuNyA4LjUgMTEuN0M4LjMgMTEuMiA4LjIgMTAuOSA3LjUgMTBDNi40IDguMyA0LjIgNi40IDIuNyA1LjhDMiA1LjUgMS42IDUuNCAxLjUgNS41Wk0yOC40IDE2LjdDMjkuMiAxNi45IDI5LjcgMTcuMiAyOS45IDE3LjdDMzAuMSAxOC4yIDMwIDE4LjkgMjkuNiAxOS40QzI5LjIgMTkuOSAyOC4yIDIwLjkgMjcuNiAyMS4yQzI2LjggMjEuNyAyNS4zIDIyLjQgMjQuMiAyMi43QzIzLjkgMjIuOCAyMy42IDIyLjkgMjMuNSAyMi45QzIyLjggMjMuMiAyMC43IDIzLjcgMTkuNiAyNEMxOSAyNC4yIDE4LjQgMjQuMyAxOC4xIDI0LjRDMTcuOSAyNC40IDE2LjEgMjQuOSAxNS4zIDI1LjFDMTQuNiAyNS4yIDE0LjcgMjUuMSAxNS43IDIzLjZDMTYuNCAyMi43IDE4LjUgMjAuNiAxOS40IDE5LjlDMjAuOCAxOC44IDIxLjQgMTguNCAyMy4yIDE3LjZDMjMuOCAxNy40IDI1LjYgMTYuOCAyNS45IDE2LjhDMjUuOSAxNi44IDI2LjMgMTYuOCAyNi42IDE2LjdDMjYuOCAxNi43IDI4LjIgMTYuNyAyOC40IDE2LjdaTTMwLjQgMjAuMkMzMC41IDIwLjMgMzAuNiAyMC42IDMwLjYgMjAuN0MzMS43IDIzLjEgMzMuNCAyNC42IDM1LjYgMjUuM0MzNi4xIDI1LjUgMzYuNyAyNS43IDM3LjIgMjUuOEMzNy43IDI1LjggMzcuOCAyNS45IDM3LjggMjYuMUMzNy43IDI2LjIgMzcuNyAyNi4zIDM3LjcgMjYuNUMzNy43IDI2LjYgMzcuNyAyNi44IDM3LjYgMjdDMzcuNCAyOC41IDM2LjggMjkuOSAzNi4xIDMxQzM2LjEgMzEuMiAzNS45IDMxLjQgMzUuOSAzMS42QzM1LjcgMzEuOSAzNS4yIDMyLjYgMzQuNyAzMy4zQzMyLjYgMzUuNiAyOS43IDM3LjMgMjYuNiAzNy44QzI2LjUgMzcuOCAyNi4zIDM3LjkgMjYuMiAzNy45QzI1LjggMzcuOSAyMy43IDM3LjkgMjMuMyAzNy45QzIzLjIgMzcuOSAyMyAzNy44IDIyLjkgMzcuOEMyMS4xIDM3LjYgMTkuMyAzNi44IDE4IDM1LjdDMTcuNyAzNS40IDE3IDM0LjcgMTYuOCAzNC41QzE2LjMgMzMuOCAxNi4xIDMzIDE2LjMgMzIuNUMxNi41IDMxLjggMTYuOCAzMS42IDE3LjkgMzEuMUMxOS4xIDMwLjUgMTkuNCAzMC40IDIwLjIgMzBDMjEuNCAyOS40IDIzLjIgMjguNCAyMy45IDI3LjlDMjMuOSAyNy44IDI0LjIgMjcuNyAyNC41IDI3LjZDMjYuMyAyNi4zIDI4IDI0LjYgMjguOSAyMi45QzI5LjUgMjIuMiAyOS43IDIxLjYgMjkuOSAyMC43QzMwLjEgMjAgMzAuMiAxOS45IDMwLjQgMjAuMloiLz48L3N2Zz4K",
@@ -30,6 +30,9 @@ var package_default = {
       surface: "QUICK_WORK_DESKTOP_WINDOWS",
       requestTimeoutSeconds: 300,
       thinkingEffort: "off",
+      chatAgentId: "",
+      sessionReuse: false,
+      sessionTtlMinutes: 30,
       keepSessions: false,
       outpostId: "",
       workingSessionId: ""
@@ -87,9 +90,12 @@ function readOptions(options = {}) {
     invalid("region", "\u8BF7\u8F93\u5165 AWS \u533A\u57DF\u4EE3\u7801\uFF0C\u4F8B\u5982 us-east-1\u3002");
   if (!/^[A-Za-z0-9._-]+$/.test(values.surface))
     invalid("surface", "\u5BA2\u6237\u7AEF\u6807\u8BC6\u53EF\u4F7F\u7528\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u70B9\u3001\u4E0B\u5212\u7EBF\u548C\u8FDE\u5B57\u7B26\u3002");
-  for (const key of ["outpostId", "workingSessionId"]) {
+  for (const key of ["outpostId", "workingSessionId", "chatAgentId"]) {
     if (!/^[\x21-\x7e]*$/.test(values[key]))
       invalid(key, "\u6B64\u6807\u8BC6\u53EA\u80FD\u5305\u542B\u4E0D\u5E26\u7A7A\u683C\u7684 ASCII \u53EF\u89C1\u5B57\u7B26\u3002");
+  }
+  if (!Number.isSafeInteger(values.sessionTtlMinutes * 60000) || !Number.isInteger(values.sessionTtlMinutes) || values.sessionTtlMinutes < 1) {
+    invalid("sessionTtlMinutes", "\u4F1A\u8BDD\u590D\u7528\u65F6\u9650\u987B\u4E3A\u6B63\u6574\u6570\u5206\u949F\u3002");
   }
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: values.timezone });
@@ -180,19 +186,33 @@ function jwtClaims(jwt) {
     return {};
   }
 }
-function tokenRecord(meta, tokens) {
-  const jwt = tokens.idToken || tokens.id_token || tokens.accessToken || tokens.access_token;
-  required(jwt, "Amazon Quick token");
+function tokenRecord(meta, tokens, previous) {
+  const now = Date.now();
+  const oldClaims = jwtClaims(previous?.access || "");
+  const previousId = (meta.tokenKind === "id" || oldClaims?.token_use === "id") && Math.min(previous?.expires ?? 0, Number(oldClaims?.exp || Infinity) * 1000) > now + 60000;
+  const newId = tokens.idToken || tokens.id_token;
+  const access = tokens.accessToken || tokens.access_token;
+  required(newId || access, "Amazon Quick token");
+  let idToken = newId || previousId && previous.access;
+  if (access && Number(jwtClaims(idToken)?.exp) * 1000 <= now)
+    idToken = undefined;
+  const jwt = idToken || access;
   const seconds = Number(tokens.expires_in ?? tokens.expiresIn);
-  const expires = seconds > 0 ? Date.now() + seconds * 1000 : Number(jwtClaims(jwt)?.exp) * 1000;
-  if (!Number.isFinite(expires) || expires <= Date.now())
-    throw new Error("Missing or expired Amazon Quick token lifetime");
   const refreshToken = tokens.refreshToken || tokens.refresh_token || meta.refreshToken || "";
+  const claimExpiry = Number(jwtClaims(jwt)?.exp) * 1000;
+  const deadlines = [
+    seconds > 0 ? now + seconds * 1000 : NaN,
+    claimExpiry,
+    idToken && idToken === previous?.access ? previous.expires : NaN
+  ].filter(Number.isFinite);
+  const expires = deadlines.length ? Math.min(...deadlines) : refreshToken ? now + 50 * 60000 : 0;
+  if (expires <= now)
+    throw new Error("Missing or expired Amazon Quick token lifetime");
   return {
     type: "oauth",
     access: jwt,
     expires,
-    refresh: JSON.stringify({ ...meta, refreshToken }),
+    refresh: JSON.stringify({ ...meta, refreshToken, tokenKind: idToken ? "id" : "access" }),
     uid: meta.accountId,
     accountId: meta.email || meta.accountId
   };
@@ -221,6 +241,7 @@ function sessionFromAuth(auth) {
   const meta = readMeta(auth);
   return {
     jwt: auth.access,
+    tenant: meta.tenant,
     wsHost: new URL(meta.tenant).hostname,
     wsPath: "",
     provider: meta.provider,
@@ -280,7 +301,7 @@ async function refreshAuth(auth) {
       error.signIn = "expired";
     throw error;
   }
-  return tokenRecord(meta, await exchange(meta, {}));
+  return tokenRecord(meta, await exchange(meta, {}), auth);
 }
 function discoveryURL(provider, nonce, port, region, appVersion) {
   const enterpriseHost = (region === "us-east-1" ? "" : region + ".") + "quicksight.aws.amazon.com";
@@ -461,7 +482,7 @@ function createAuthMethods(clientOptions = defaultOptions) {
 }
 
 // src/chat.js
-import { randomUUID as randomUUID3 } from "crypto";
+import { randomUUID as randomUUID4 } from "crypto";
 
 // src/messages.js
 import { randomUUID } from "crypto";
@@ -494,7 +515,20 @@ function toolSettings(body) {
     if (item?.type !== "function" || typeof fn?.name !== "string" || !fn.name.trim()) {
       badRequest("Amazon Quick supports named function tools only.");
     }
-    definitions.set(fn.name, { name: fn.name, description: fn.description, parameters: fn.parameters });
+    if (!definitions.has(fn.name)) {
+      definitions.set(fn.name, {
+        name: fn.name,
+        description: fn.description,
+        parameters: fn.parameters ?? { type: "object", properties: {} },
+        strict: fn.strict
+      });
+    }
+  }
+  const qualifiedNames = new Map;
+  for (const name of definitions.keys()) {
+    const qualified = "functions." + name;
+    if (!definitions.has(qualified))
+      qualifiedNames.set(qualified, name);
   }
   const choice = body.tool_choice ?? body.function_call ?? "auto";
   let required = false;
@@ -515,7 +549,7 @@ function toolSettings(body) {
     badRequest("A required tool must be declared.");
   if (body.parallel_tool_calls != null && typeof body.parallel_tool_calls !== "boolean")
     badRequest("parallel_tool_calls must be a boolean.");
-  return { enabled: definitions.size > 0, allowed: definitions, parallel: body.parallel_tool_calls !== false, required };
+  return { enabled: definitions.size > 0, allowed: definitions, qualifiedNames, parallel: body.parallel_tool_calls !== false, required };
 }
 function toolInstructions(tools) {
   const names = [...tools.allowed.keys()];
@@ -526,6 +560,7 @@ function toolInstructions(tools) {
     '<client_tool_call>{"name":' + JSON.stringify(names.length === 1 ? names[0] : "FUNCTION_NAME") + ',"arguments":{}}</client_tool_call>',
     "When requesting a function, use the actual arguments from the task and follow its parameter schema. Output the marker alone and wait for the caller to return the result.",
     tools.required && (names.length === 1 ? "You must call " + JSON.stringify(names[0]) + " this turn." : "You must call at least one listed function this turn."),
+    !tools.required && "If the conversation can be answered without another call, answer normally.",
     !tools.parallel && "Call at most one function in this turn."
   ].filter(Boolean).join(`
 `);
@@ -554,6 +589,15 @@ function conversationText(history) {
   return parts.join(`
 
 `);
+}
+function relayPrompt(instructions, transcript) {
+  if (!instructions)
+    return transcript;
+  return `[Instructions from the API caller]
+` + instructions + `
+[End of instructions]
+
+` + transcript;
 }
 function prepareTurn(body) {
   if (!Array.isArray(body?.messages) || !body.messages.length)
@@ -608,45 +652,47 @@ function prepareTurn(body) {
   }
   if (!history.length)
     badRequest("messages contain no user text, assistant text, or tool history.");
-  let prompt = conversationText(history);
-  if (tools.enabled) {
-    const protocol = toolInstructions(tools);
-    if (tools.required) {
-      system.push("Return a client function call for this turn. Follow the wire format in the message for: " + JSON.stringify([...tools.allowed.keys()]) + ".");
-      prompt += `
+  if (tools.enabled)
+    system.push(toolInstructions(tools));
+  const systemPrompt = system.join(`
 
-` + protocol;
-    } else {
-      system.push(protocol);
-    }
-  }
+`);
+  const transcript = conversationText(history);
+  const prompt = relayPrompt(systemPrompt, transcript);
   const title = Array.from(lastUser.trim().replace(/\s+/g, " ")).slice(0, 64).join("") || "Magpie";
-  return { prompt, systemPrompt: system.join(`
-
-`), model: body.model, title, tools };
+  return { prompt, systemPrompt, transcript, model: body.model, title, tools };
 }
-function asCall(item, tools) {
+function asCall(item, tools, requireArguments = false, aliases) {
   const fn = item?.function ?? item;
-  if (!fn || !tools.allowed.has(fn.name))
+  if (!fn || typeof fn !== "object")
+    return null;
+  if (fn.name != null && fn.tool != null && fn.name !== fn.tool)
+    return null;
+  if (item.function && (item.name != null || item.tool != null))
+    return null;
+  const supplied = fn.name ?? fn.tool;
+  const name = aliases?.get(supplied) ?? supplied;
+  if (!tools.allowed.has(name))
     return null;
   if (item.function && item.type != null && item.type !== "function")
     return null;
-  let args = fn.arguments;
+  const argumentKeys = ["arguments", "parameters", "input", "args"].filter((key) => Object.hasOwn(fn, key));
+  if (argumentKeys.length > 1 || requireArguments && !argumentKeys.length)
+    return null;
+  let args = argumentKeys.length ? fn[argumentKeys[0]] : {};
   if (typeof args === "string") {
     try {
-      args = JSON.parse(args || "{}");
+      args = JSON.parse(args);
     } catch {
       return null;
     }
   }
-  if (args === undefined)
-    args = {};
   if (!args || typeof args !== "object" || Array.isArray(args))
     return null;
   return {
     id: typeof item.id === "string" && item.id ? item.id : "call_" + randomUUID().replaceAll("-", ""),
     type: "function",
-    function: { name: fn.name, arguments: JSON.stringify(args) }
+    function: { name, arguments: JSON.stringify(args) }
   };
 }
 function parseCalls(json, tools, requireArguments = false) {
@@ -656,23 +702,45 @@ function parseCalls(json, tools, requireArguments = false) {
   } catch {
     return null;
   }
-  const items = Array.isArray(payload) ? payload : Array.isArray(payload?.tool_calls) ? payload.tool_calls : [payload];
-  if (requireArguments && items.some((item) => (item?.function ?? item)?.arguments === undefined))
+  if (!payload || typeof payload !== "object")
     return null;
-  const calls = items.map((item) => asCall(item, tools));
+  const wrapperKeys = ["tool_calls", "calls", "tool_call", "function_call"].filter((key) => Object.hasOwn(payload, key));
+  if (wrapperKeys.length > 1)
+    return null;
+  let items = payload;
+  if (wrapperKeys.length) {
+    if (payload.name != null || payload.function != null || payload.tool != null)
+      return null;
+    const key = wrapperKeys[0];
+    items = payload[key];
+    if (Array.isArray(items) !== (key === "tool_calls" || key === "calls"))
+      return null;
+  }
+  const calls = (Array.isArray(items) ? items : [items]).map((item) => asCall(item, tools, requireArguments, tools.qualifiedNames));
   return calls.length && calls.every(Boolean) ? calls : null;
 }
 function finishTools(text, nativeEvents, tools) {
   if (!tools.enabled)
     return { text, toolCalls: [] };
+  const tags = /<(client_tool_call|tool_call|function_call)>([\s\S]*?)<\/\1>/g;
+  const fencedJSON = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i;
+  const whole = text.trim();
+  const fence = fencedJSON.exec(whole);
+  const body = fence?.[1] ?? whole;
+  const hasGeneric = body.includes("<tool_call>") || body.includes("<function_call>");
+  const justTags = hasGeneric && body.replace(tags, "").trim() === "";
   const toolCalls = [];
-  let cleaned = text.replace(/<client_tool_call>([\s\S]*?)<\/client_tool_call>/g, (marker, payload) => {
-    const calls = parseCalls(payload, tools);
+  let cleaned = text.replace(tags, (marker, tag, payload) => {
+    if (tag !== "client_tool_call" && !justTags)
+      return marker;
+    const calls = parseCalls(payload, tools, tag !== "client_tool_call");
     if (!calls)
       return marker;
     toolCalls.push(...calls);
     return "";
   });
+  if (toolCalls.length && fence && fencedJSON.exec(cleaned.trim())?.[1].trim() === "")
+    cleaned = "";
   if (!toolCalls.length) {
     for (const event of nativeEvents) {
       const call = asCall(event, tools);
@@ -681,9 +749,7 @@ function finishTools(text, nativeEvents, tools) {
     }
   }
   if (tools.required && !toolCalls.length) {
-    const whole = text.trim();
-    const fence = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(whole);
-    const calls = parseCalls(fence ? fence[1] : whole, tools, true);
+    const calls = parseCalls(body, tools, true);
     if (!calls)
       throw Object.assign(new Error("Amazon Quick did not return a required tool call."), { status: 502, expose: true });
     toolCalls.push(...calls);
@@ -692,10 +758,74 @@ function finishTools(text, nativeEvents, tools) {
   return { text: cleaned === text ? text : cleaned.trim(), toolCalls: tools.parallel ? toolCalls : toolCalls.slice(0, 1) };
 }
 
+// src/conversations.js
+import { createHash as createHash2, randomUUID as randomUUID2 } from "crypto";
+function digest(value) {
+  return createHash2("sha256").update(JSON.stringify(value)).digest("hex");
+}
+function conversationKey(headers, account, turn) {
+  const id = headers.get("x-conversation-id") || headers.get("x-thread-id") || headers.get("x-magpie-session");
+  if (!id)
+    return null;
+  return digest([
+    id,
+    headers.get("authorization"),
+    headers.get("x-api-key"),
+    account.accountId,
+    account.tenant,
+    account.wsHost,
+    account.provider,
+    turn.model,
+    turn.systemPrompt
+  ]);
+}
+async function* conversationUpdates(cache, key, body, turn, ttl, run, signal) {
+  const messages = body.messages;
+  const previous = cache.get(key);
+  cache.delete(key);
+  const reply = messages.at(-2);
+  let resume = previous && previous.expires > Date.now() && messages.at(-1).role === "user" && reply?.role === "assistant" && typeof reply.content === "string" && !reply.tool_calls && !reply.function_call && digest(messages.slice(0, -2)) === previous.prefix && createHash2("sha256").update(reply.content).digest("hex") === previous.reply;
+  while (true) {
+    const threadId = resume ? previous.threadId : randomUUID2();
+    const input = resume ? prepareTurn({ ...body, messages: [
+      ...messages.filter((m) => m.role === "system" || m.role === "developer"),
+      messages.at(-1)
+    ] }) : turn;
+    const output = createHash2("sha256");
+    let emitted = false;
+    try {
+      for await (const part of run({ ...input, threadId, createSession: !resume, keepSession: true })) {
+        if (part.delta?.content)
+          output.update(part.delta.content);
+        if (part.finish === "stop" && !signal.aborted) {
+          const now = Date.now();
+          for (const [k, entry] of cache)
+            if (entry.expires <= now)
+              cache.delete(k);
+          cache.delete(key);
+          if (cache.size >= 256)
+            cache.delete(cache.keys().next().value);
+          cache.set(key, { threadId, prefix: digest(messages), reply: output.digest("hex"), expires: now + ttl });
+        }
+        emitted = true;
+        yield part;
+      }
+      return;
+    } catch (err) {
+      if (!resume || emitted || !err.sessionMissing || signal.aborted)
+        throw err;
+      resume = false;
+    }
+  }
+}
+
 // src/transport.js
-import { randomUUID as randomUUID2 } from "crypto";
+import { randomUUID as randomUUID3 } from "crypto";
 import { EventEmitter, on } from "events";
 import WebSocket from "ws";
+
+// src/attachments.js
+import { setTimeout as delay } from "timers/promises";
 
 // node_modules/cborg/lib/is.js
 var objectTypeNames = [
@@ -2645,8 +2775,7 @@ function stringHeaders(block) {
 function quickError(message, status = 502) {
   return Object.assign(new Error(message), { status });
 }
-function upstreamFailure(code) {
-  const name = String(code ?? "").toLowerCase();
+function upstreamFailure(...codes) {
   const statuses = {
     accessdeniedexception: 403,
     unauthorizedexception: 401,
@@ -2656,9 +2785,29 @@ function upstreamFailure(code) {
     throttlingexception: 429,
     throttled: 429,
     toomanyrequests: 429,
-    toomanyrequestsexception: 429
+    toomanyrequestsexception: 429,
+    sessionnotfound: 404,
+    conversationnotfound: 404,
+    threadnotfound: 404,
+    sessionnotfoundexception: 404,
+    conversationnotfoundexception: 404,
+    threadnotfoundexception: 404
   };
-  const status = /^[45]\d{2}$/.test(name) ? Number(name) : Object.hasOwn(statuses, name) ? statuses[name] : 502;
+  const http = codes.find((code) => (typeof code === "string" || typeof code === "number") && /^[45]\d{2}$/.test(code));
+  const status = http === undefined ? 502 : Number(http);
+  if (http !== undefined && status !== 404)
+    return quickError("Amazon Quick reported an upstream error", status);
+  for (const code of codes) {
+    if (typeof code !== "string" && typeof code !== "number")
+      continue;
+    const name = String(code).split("#").at(-1).toLowerCase().replace(/[_-]/g, "");
+    if (Object.hasOwn(statuses, name)) {
+      const error = quickError("Amazon Quick reported an upstream error", statuses[name]);
+      if (statuses[name] === 404)
+        error.sessionMissing = true;
+      return error;
+    }
+  }
   return quickError("Amazon Quick reported an upstream error", status);
 }
 function encodeQuickFrame(event, gateway) {
@@ -2679,11 +2828,12 @@ function parseJSON(bytes) {
     throw malformed();
   }
 }
-function decodeQuickFrame(data, binary, gateway) {
+function* quickEvents(data, binary, gateway) {
   const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  if (!binary || bytes[0] > 1)
-    return [parseJSON(bytes)];
-  const events = [];
+  if (!binary || bytes[0] > 1) {
+    yield parseJSON(bytes);
+    return;
+  }
   for (let offset = 0;offset < bytes.length; ) {
     if (bytes.length - offset < 16)
       throw malformed();
@@ -2696,7 +2846,7 @@ function decodeQuickFrame(data, binary, gateway) {
       throw malformed();
     const headers = stringHeaders(frame.subarray(12, 12 + headerSize));
     if (["error", "exception"].includes(headers.get(":message-type"))) {
-      throw upstreamFailure(headers.get(":error-code") || headers.get(":exception-type"));
+      throw upstreamFailure(headers.get(":error-code"), headers.get(":exception-type"));
     }
     const body = frame.subarray(12 + headerSize, -4);
     if (gateway) {
@@ -2709,21 +2859,154 @@ function decodeQuickFrame(data, binary, gateway) {
       const payload = envelope?.payload;
       if (!(payload instanceof Uint8Array) && typeof payload !== "string")
         throw malformed();
-      events.push(parseJSON(Buffer.from(payload)));
+      yield parseJSON(Buffer.from(payload));
     } else {
       const payload = parseJSON(body)?.payload;
       if (typeof payload !== "string")
         throw malformed();
-      events.push(parseJSON(Buffer.from(payload, "base64")));
+      yield parseJSON(Buffer.from(payload, "base64"));
     }
     offset += size;
   }
-  return events;
+}
+
+// src/attachments.js
+var MiB = 1024 * 1024;
+var pollInterval = 1500;
+var pollAttempts = 60;
+function tenantBase(session) {
+  let url;
+  try {
+    url = new URL(session.tenant);
+  } catch {
+    throw quickError("Invalid Amazon Quick attachment tenant", 400);
+  }
+  if (url.protocol !== "https:" || !isQuickHost(url.hostname) || url.hostname !== session.wsHost || url.username || url.password || url.port || url.search || url.hash) {
+    throw quickError("Invalid Amazon Quick attachment tenant", 400);
+  }
+  if (typeof session.jwt !== "string" || !session.jwt || /[\s\x00-\x1f\x7f]/.test(session.jwt)) {
+    throw quickError("Amazon Quick sign-in is required", 401);
+  }
+  return url.href.replace(/\/+$/, "") + "/integration/quick-work/";
+}
+async function tenantJSON(url, token, signal, { body, contentType, limit = MiB } = {}) {
+  const headers = { Authorization: "Bearer " + token, Origin: "https://quick.aws.com", Accept: "application/json" };
+  if (contentType)
+    headers["Content-Type"] = contentType;
+  let response;
+  try {
+    response = await fetch(url, { method: body === undefined ? "GET" : "POST", headers, body, credentials: "omit", redirect: "error", signal });
+  } catch {
+    signal.throwIfAborted();
+    throw quickError("Amazon Quick attachment service unavailable");
+  }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {});
+    const status = response.status >= 400 && response.status < 600 ? response.status : 502;
+    throw quickError("Amazon Quick attachment service rejected the request", status);
+  }
+  try {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of response.body) {
+      size += chunk.length;
+      if (size > limit)
+        throw new Error;
+      chunks.push(chunk);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    signal.throwIfAborted();
+    throw quickError("Invalid Amazon Quick attachment response");
+  }
+}
+function attachmentPath(value) {
+  const path = value?.path || value?.files?.[0]?.path;
+  return typeof path === "string" ? path.trim() : "";
+}
+function decodeObject(value) {
+  if (typeof value !== "string")
+    return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return;
+  }
+}
+function scanAllowed(verdict) {
+  const action = String(verdict?.policyAction ?? "").trim().toUpperCase();
+  const status = String(verdict?.dlpJobStatus ?? "").trim().toUpperCase();
+  if (["BLOCK", "WARN", "DENY", "REJECT"].includes(action)) {
+    throw quickError("Amazon Quick attachment blocked by tenant policy", 403);
+  }
+  if (["FAILED", "ERROR"].includes(status))
+    throw quickError("Amazon Quick attachment scan failed");
+  const exempt = ["SKIPPED", "NOT_APPLICABLE", "DISABLED"].includes(status);
+  if (action === "ALLOW" && (!status || status === "COMPLETED" || exempt))
+    return true;
+  if (!action && exempt)
+    return true;
+  if (status === "COMPLETED")
+    throw quickError("Amazon Quick attachment scan returned no approval", 403);
+  return false;
+}
+async function uploadPromptAttachment(session, threadId, name, text, signal) {
+  const base = tenantBase(session);
+  if (!threadId || threadId === "." || threadId === "..")
+    throw quickError("Invalid attachment conversation", 400);
+  const timeout = AbortSignal.timeout(120000);
+  const deadline = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  deadline.throwIfAborted();
+  const size = Buffer.byteLength(text);
+  const query = new URLSearchParams({ name, contentType: "text/plain", contentLength: String(size) });
+  const uploaded = await tenantJSON(base + "upload-attachment?" + query, session.jwt, deadline, {
+    body: Buffer.from(text),
+    contentType: "application/octet-stream"
+  });
+  const id = typeof uploaded?.attachmentId === "string" ? uploaded.attachmentId.trim() : "";
+  let path = attachmentPath(uploaded);
+  const approved = scanAllowed(uploaded);
+  if (!id && (uploaded?.policyAction != null || uploaded?.dlpJobStatus != null) && !approved) {
+    throw quickError("Amazon Quick attachment scan returned no approval", 403);
+  }
+  if (id) {
+    const url = base + "attachment-dlp-status?" + new URLSearchParams({ attachmentId: id });
+    let allowed = false;
+    for (let i = 0;i < pollAttempts; i++) {
+      if (i)
+        await delay(pollInterval, undefined, { signal: deadline });
+      if (scanAllowed(await tenantJSON(url, session.jwt, deadline))) {
+        allowed = true;
+        break;
+      }
+    }
+    if (!allowed)
+      throw quickError("Amazon Quick attachment scan timed out", 504);
+  }
+  if (!path && id) {
+    const eventBody = { invokeAgent: {
+      path: "files/upload/" + encodeURIComponent(threadId),
+      queryParams: { _method: "POST" },
+      body: { attachmentId: id }
+    } };
+    const delivered = await tenantJSON(base + "qbs-event", session.jwt, deadline, {
+      body: JSON.stringify({ eventType: "invokeAgent", eventBody }),
+      contentType: "application/json",
+      limit: 2 * MiB
+    });
+    const result = decodeObject(delivered?.eventResponse?.invokeAgentResponse) ?? delivered;
+    path = attachmentPath(delivered) || attachmentPath(decodeObject(result?.body)) || attachmentPath(result);
+  }
+  if (!path)
+    throw quickError("Amazon Quick attachment returned no workspace path");
+  deadline.throwIfAborted();
+  return { type: "file", name, size, mimeType: "text/plain", path, ...id ? { attachmentId: id } : {} };
 }
 
 // src/transport.js
 var aidpPath = "/streaming/quickwork-chat-bidirectional-stream";
 var gatewayPath = "/ws/service/SpaceNeedleConversationService/operation/ChatBidirectionalStream";
+var userMessageBudget = 63 * 1024;
 var terminal = new Set(["turn_completed", "turn_ended", "stream_ended", "chat_complete"]);
 var toolEvents = new Set([
   "tool_start",
@@ -2776,22 +3059,50 @@ function usageEvent(p) {
     usage.duration_ms = p.duration_ms;
   return usage;
 }
-function rememberTool(tools, p) {
-  const name = p.tool_name || p.name || p.function?.name || p.title;
-  const fromWire = p.tool_id || p.tool_call_id || p.toolCallId || p.id;
-  if (!fromWire && !name)
+function rememberTool(tools, type, p) {
+  if (type === "tool_result" || type === "tool_error")
     return;
-  const key = fromWire || name;
-  const tool = tools.get(key) || { type: "tool", id: fromWire || "call_" + randomUUID2(), name: "", arguments: "" };
+  const name = p.tool_name || p.name || p.function?.name;
+  const fromWire = p.tool_id || p.tool_call_id || p.toolCallId || p.id;
+  const key = fromWire || name || p.title;
+  if (!key)
+    return;
+  const tool = tools.get(key) || { type: "tool", id: fromWire || "call_" + randomUUID3(), name: "", arguments: "" };
   if (typeof name === "string")
     tool.name = name;
+  else if (!tool.name && typeof p.title === "string")
+    tool.name = p.title;
   const args = p.arguments ?? p.function?.arguments ?? p.rawInput ?? p.raw_input;
   const delta = p.input_delta ?? p.progress?.input_delta;
-  if (args != null)
+  if (args != null) {
     tool.arguments = typeof args === "string" ? args : JSON.stringify(args);
-  else if (typeof delta === "string")
+    if (type === "tool_start" && tool.arguments.trim() === "{}")
+      tool.arguments = "";
+    tool.finalized = Boolean(tool.arguments);
+  } else if (!tool.finalized && typeof delta === "string")
     tool.arguments += delta;
   tools.set(key, tool);
+}
+function userMessageFits(payload) {
+  return Buffer.byteLength(JSON.stringify({ type: "user_message", payload })) <= userMessageBudget;
+}
+async function fitUserMessage(payload, input, session, gateway, signal) {
+  if (userMessageFits(payload))
+    return payload;
+  const tooLarge = () => Object.assign(quickError("This turn exceeds the Amazon Quick 64 KiB message limit.", 413), { expose: true });
+  if (gateway || !session.tenant)
+    throw tooLarge();
+  const name = "prompt-" + payload.message_id + ".txt";
+  const attachmentCue = "Read the full user message for this turn in the attached file " + name + " and respond to it.";
+  const text = input.transcript === undefined ? attachmentCue : relayPrompt(input.systemPrompt, attachmentCue);
+  const outgoing = { ...payload, text };
+  if (!userMessageFits(outgoing))
+    throw tooLarge();
+  const attachment = await uploadPromptAttachment(session, payload.thread_id, name, input.transcript ?? input.prompt, signal);
+  outgoing.attachments = [attachment];
+  if (!userMessageFits(outgoing))
+    throw tooLarge();
+  return outgoing;
 }
 function stamp() {
   return { epoch: Date.now(), monotonic: performance.now() };
@@ -2805,8 +3116,9 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
   const gateway = session.provider === "gateway" || session.provider === "social_gateway";
   const options = input.clientOptions ?? defaultOptions;
   const { appVersion, surface, outpostId, workingSessionId } = options;
+  const keepSession = input.keepSession ?? options.keepSessions;
   const url = destination(session, gateway, options);
-  const thread = input.threadId || randomUUID2();
+  const thread = input.threadId || randomUUID3();
   const title = input.title || Array.from(input.prompt.replace(/\s+/g, " ").trim()).slice(0, 60).join("");
   let socket;
   try {
@@ -2830,11 +3142,14 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
   const packets = on(bus, "packet");
   const push = (packet) => bus.emit("packet", packet);
   let started, progress, completed, quietTimer, idleTimer;
+  let created = false, success = false;
+  const upload = new AbortController;
   function closeConnection() {
     if (socket.readyState === WebSocket.OPEN) {
       try {
-        if (started && !options.keepSessions)
+        if (!keepSession && (created || started) || created && !success && input.keepSession === true) {
           send("session_delete", { session_id: thread });
+        }
         socket.close();
       } catch {
         socket.terminate();
@@ -2850,18 +3165,27 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
   socket.on("error", (error) => {
     const match = /^Unexpected server response: ([1-5]\d{2})$/.exec(error.message);
     const status = match ? Number(match[1]) : 502;
-    push({ error: quickError("Amazon Quick connection failed (HTTP " + status + ")", status) });
+    const failure = quickError("Amazon Quick connection failed (HTTP " + status + ")", status);
+    upload.abort(failure);
+    push({ error: failure });
   });
-  socket.once("close", (code) => push({ kind: "closed", code }));
+  socket.once("close", (code) => {
+    upload.abort(quickError("Amazon Quick closed the connection (" + code + ")"));
+    push({ kind: "closed", code });
+  });
   function abort() {
-    push({ error: abortError() });
+    const error = abortError();
+    upload.abort(error);
+    push({ error });
     closeConnection();
   }
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted)
     abort();
   const deadline = setTimeout(() => {
-    push({ error: quickError("Amazon Quick request timed out", 504) });
+    const error = quickError("Amazon Quick request timed out", 504);
+    upload.abort(error);
+    push({ error });
     closeConnection();
   }, options.requestTimeoutSeconds * 1000);
   const keepalive = setInterval(() => {
@@ -2900,30 +3224,36 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
             });
           }
           send("federate_status", {});
-          send("session_create", { session_id: thread, title });
-          send("user_message", {
+          if (input.createSession !== false) {
+            send("session_create", { session_id: thread, title });
+            created = true;
+          }
+          const payload = {
             text: input.prompt,
             send_origin: "programmatic",
             had_physical_input: false,
             surfaceType: surface,
             outpostId,
             appVersion,
-            traceId: randomUUID2(),
-            message_id: randomUUID2(),
+            traceId: randomUUID3(),
+            message_id: randomUUID3(),
             thread_id: thread,
             agent_mode: input.model || "smart",
             user_timezone: options.timezone,
             user_locale: options.locale,
-            chat_agent_id: null,
+            chat_agent_id: input.chatAgentId || options.chatAgentId || null,
             auto_routing: false,
             web_search_enabled: false,
             pre_approved_tools: [],
             preload_skills: [],
             panel_edits: [],
             custom_prompt: null,
-            ...input.systemPrompt ? { system_prompt: input.systemPrompt } : {},
+            ...input.transcript === undefined && input.systemPrompt ? { system_prompt: input.systemPrompt } : {},
             ...options.thinkingEffort !== "off" ? { thinking_effort: options.thinkingEffort } : {}
-          });
+          };
+          const fitted = await fitUserMessage(payload, input, session, gateway, upload.signal);
+          upload.signal.throwIfAborted();
+          send("user_message", fitted);
           started = stamp();
           idleTimer = setTimeout(() => push({ kind: "idle" }), 120000);
           continue;
@@ -2940,7 +3270,7 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
             break;
           throw quickError("Amazon Quick closed the connection (" + packet.code + ")");
         }
-        for (const event of decodeQuickFrame(packet.data, packet.binary, gateway)) {
+        for (const event of quickEvents(packet.data, packet.binary, gateway)) {
           if (signal?.aborted)
             throw abortError();
           const type = event?.type;
@@ -2971,14 +3301,13 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
               progress = packet.at;
             yield usage;
           } else if (toolEvents.has(type)) {
-            rememberTool(tools, p);
-            if (tools.size)
-              progress = packet.at;
+            rememberTool(tools, type, p);
+            progress = packet.at;
             completed = undefined;
             clearTimeout(quietTimer);
           } else if (type === "message_complete") {
             for (const tool of p.tool_calls || [])
-              rememberTool(tools, tool);
+              rememberTool(tools, type, tool);
             if (p.tool_calls?.length)
               progress = packet.at;
             clearTimeout(quietTimer);
@@ -2991,7 +3320,7 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
             completed ||= packet.at;
             break loop;
           } else if (["error", "turn_failed", "session_error", "stream_error", "turn_aborted"].includes(type)) {
-            throw upstreamFailure(p.status_code || p.code || event.error_code);
+            throw upstreamFailure(p.status_code, event.status_code, p.code, p.error_code, p.error?.code, event.code, event.error_code);
           } else if (type === "ping" && socket.readyState === WebSocket.OPEN) {
             socket.pong();
           }
@@ -3001,9 +3330,18 @@ async function* streamQuick(session, input, signal, connect = (url, options) => 
       if (signal?.aborted)
         throw abortError();
       if (tool.name)
-        yield { ...tool, arguments: tool.arguments || "{}" };
+        yield { type: "tool", id: tool.id, name: tool.name, arguments: tool.arguments || "{}" };
     }
+    success = Boolean(textMessages.size || tools.size);
   } catch (error) {
+    if (error?.sessionMissing && (input.createSession !== false || progress))
+      delete error.sessionMissing;
+    if (signal?.aborted)
+      throw abortError();
+    if (error?.name === "AbortError" && upload.signal.aborted)
+      throw upload.signal.reason;
+    if (error?.name === "TimeoutError")
+      throw quickError("Amazon Quick request timed out", 504);
     if (error?.status)
       throw error;
     throw quickError("Could not process the Amazon Quick stream");
@@ -3048,10 +3386,13 @@ async function* updates(turn, events) {
   let hasText = false;
   for await (const event of events) {
     if (event.type === "text" && event.text) {
-      hasText = true;
-      if (turn.tools.enabled)
+      hasText ||= /[^\s\p{Cf}\u0000]/u.test(event.text);
+      if (turn.tools.enabled || !hasText)
         buffered.push(event.text);
-      else
+      else if (buffered.length) {
+        yield { delta: { content: buffered.join("") + event.text } };
+        buffered.length = 0;
+      } else
         yield { delta: { content: event.text } };
     } else if (event.type === "tool" && turn.tools.enabled) {
       tools.push(event);
@@ -3064,9 +3405,9 @@ async function* updates(turn, events) {
   let finish = "stop";
   if (turn.tools.enabled) {
     const result = finishTools(buffered.join(""), tools, turn.tools);
-    if (result.text)
+    hasText = /[^\s\p{Cf}\u0000]/u.test(result.text);
+    if (hasText)
       yield { delta: { content: result.text } };
-    hasText = Boolean(result.text);
     if (result.toolCalls.length) {
       const indexed = result.toolCalls.map((call, index) => ({ index, ...call }));
       yield { delta: { tool_calls: indexed } };
@@ -3149,6 +3490,7 @@ function asStream(iterator, first, base, includeUsage, controller) {
   return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } });
 }
 function createChatFetch({ baseURL, models, session, record, stream = streamQuick, clientOptions = defaultOptions }) {
+  const conversations = new Map;
   return async (url, init) => {
     const request = new Request(url, init);
     let signal = request.signal;
@@ -3178,9 +3520,14 @@ function createChatFetch({ baseURL, models, session, record, stream = streamQuic
         throw Object.assign(new Error("Account unavailable"), { status: err?.status || 401 });
       }
       signal.throwIfAborted();
-      const events = stream(account, { ...turn, clientOptions, onTiming: (timing) => record(account.accountId, timing) }, signal);
-      const parts = updates(turn, events);
-      const base = { id: "chatcmpl-" + randomUUID3(), created: Math.floor(Date.now() / 1000), model: body.model };
+      const run = (input) => updates(input, stream(account, {
+        ...input,
+        clientOptions,
+        onTiming: (timing) => record(account.accountId, timing)
+      }, signal));
+      const key = clientOptions.sessionReuse && conversationKey(request.headers, account, turn);
+      const parts = key ? conversationUpdates(conversations, key, body, turn, clientOptions.sessionTtlMinutes * 60000, run, signal) : run(turn);
+      const base = { id: "chatcmpl-" + randomUUID4(), created: Math.floor(Date.now() / 1000), model: body.model };
       if (!body.stream)
         return await asJSON(parts, base);
       const first = await parts.next();

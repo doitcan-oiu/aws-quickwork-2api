@@ -44,6 +44,9 @@
       <label for="surface">客户端标识（Surface）<input id="surface" name="surface" type="text" spellcheck="false" required></label>
       <label for="outpostId">Outpost ID<input id="outpostId" name="outpostId" type="text" placeholder="可留空" spellcheck="false"></label>
       <label for="workingSessionId">Working Session ID<input id="workingSessionId" name="workingSessionId" type="text" placeholder="可留空" spellcheck="false"></label>
+      <label for="chatAgentId">Quick Agent ID<input id="chatAgentId" name="chatAgentId" type="text" placeholder="使用默认 Agent" spellcheck="false"></label>
+      <label for="sessionReuse">复用上游会话<input id="sessionReuse" name="sessionReuse" type="checkbox"></label>
+      <label for="sessionTtlMinutes">会话复用时限（分钟）<input id="sessionTtlMinutes" name="sessionTtlMinutes" type="number" min="1" step="1" required></label>
       <label for="keepSessions">保留上游会话<input id="keepSessions" name="keepSessions" type="checkbox"></label>
     </details>
     <div class="actions">

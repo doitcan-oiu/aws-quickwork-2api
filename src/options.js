@@ -26,8 +26,11 @@ export function readOptions(options = {}) {
   }
   if (values.region && !regionPattern.test(values.region)) invalid('region', '请输入 AWS 区域代码，例如 us-east-1。')
   if (!/^[A-Za-z0-9._-]+$/.test(values.surface)) invalid('surface', '客户端标识可使用字母、数字、点、下划线和连字符。')
-  for (const key of ['outpostId', 'workingSessionId']) {
+  for (const key of ['outpostId', 'workingSessionId', 'chatAgentId']) {
     if (!/^[\x21-\x7e]*$/.test(values[key])) invalid(key, '此标识只能包含不带空格的 ASCII 可见字符。')
+  }
+  if (!Number.isSafeInteger(values.sessionTtlMinutes * 60_000) || !Number.isInteger(values.sessionTtlMinutes) || values.sessionTtlMinutes < 1) {
+    invalid('sessionTtlMinutes', '会话复用时限须为正整数分钟。')
   }
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: values.timezone })

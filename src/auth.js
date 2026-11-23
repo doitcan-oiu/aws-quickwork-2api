@@ -65,17 +65,28 @@ function jwtClaims(jwt) {
   try { return JSON.parse(Buffer.from(jwt.split('.')[1], 'base64url').toString()) } catch { return {} }
 }
 
-function tokenRecord(meta, tokens) {
-  const jwt = tokens.idToken || tokens.id_token || tokens.accessToken || tokens.access_token
-  required(jwt, 'Amazon Quick token')
+function tokenRecord(meta, tokens, previous) {
+  const now = Date.now()
+  const oldClaims = jwtClaims(previous?.access || '')
+  const previousId = (meta.tokenKind === 'id' || oldClaims?.token_use === 'id')
+    && Math.min(previous?.expires ?? 0, Number(oldClaims?.exp || Infinity) * 1000) > now + 60_000
+  const newId = tokens.idToken || tokens.id_token
+  const access = tokens.accessToken || tokens.access_token
+  required(newId || access, 'Amazon Quick token')
+  let idToken = newId || (previousId && previous.access)
+  if (access && Number(jwtClaims(idToken)?.exp) * 1000 <= now) idToken = undefined
+  const jwt = idToken || access
   const seconds = Number(tokens.expires_in ?? tokens.expiresIn)
-  const expires = seconds > 0 ? Date.now() + seconds * 1000 : Number(jwtClaims(jwt)?.exp) * 1000
-  if (!Number.isFinite(expires) || expires <= Date.now()) throw new Error('Missing or expired Amazon Quick token lifetime')
   const refreshToken = tokens.refreshToken || tokens.refresh_token || meta.refreshToken || ''
+  const claimExpiry = Number(jwtClaims(jwt)?.exp) * 1000
+  const deadlines = [seconds > 0 ? now + seconds * 1000 : NaN, claimExpiry,
+    idToken && idToken === previous?.access ? previous.expires : NaN].filter(Number.isFinite)
+  const expires = deadlines.length ? Math.min(...deadlines) : (refreshToken ? now + 50 * 60_000 : 0)
+  if (expires <= now) throw new Error('Missing or expired Amazon Quick token lifetime')
   return {
     type: 'oauth', access: jwt, expires,
     // All clients retain these three standard OAuth fields, even when they drop provider-specific fields.
-    refresh: JSON.stringify({ ...meta, refreshToken }),
+    refresh: JSON.stringify({ ...meta, refreshToken, tokenKind: idToken ? 'id' : 'access' }),
     uid: meta.accountId, accountId: meta.email || meta.accountId,
   }
 }
@@ -98,7 +109,7 @@ function readMeta(auth) {
 export function sessionFromAuth(auth) {
   const meta = readMeta(auth)
   return {
-    jwt: auth.access, wsHost: new URL(meta.tenant).hostname, wsPath: '',
+    jwt: auth.access, tenant: meta.tenant, wsHost: new URL(meta.tenant).hostname, wsPath: '',
     provider: meta.provider, actorArn: meta.actorArn, accountId: meta.accountId, email: meta.email,
   }
 }
@@ -153,7 +164,7 @@ export async function refreshAuth(auth) {
     if (!(auth.expires > Date.now())) error.signIn = 'expired'
     throw error
   }
-  return tokenRecord(meta, await exchange(meta, {}))
+  return tokenRecord(meta, await exchange(meta, {}), auth)
 }
 
 function discoveryURL(provider, nonce, port, region, appVersion) {

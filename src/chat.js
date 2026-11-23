@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { prepareTurn, finishTools } from './messages.js'
 import { defaultOptions } from './options.js'
+import { conversationKey, conversationUpdates } from './conversations.js'
 import { streamQuick } from './transport.js'
 
 function badRequest(message, status = 400) {
@@ -24,9 +25,12 @@ async function* updates(turn, events) {
   let hasText = false
   for await (const event of events) {
     if (event.type === 'text' && event.text) {
-      hasText = true
-      if (turn.tools.enabled) buffered.push(event.text)
-      else yield { delta: { content: event.text } }
+      hasText ||= /[^\s\p{Cf}\u0000]/u.test(event.text)
+      if (turn.tools.enabled || !hasText) buffered.push(event.text)
+      else if (buffered.length) {
+        yield { delta: { content: buffered.join('') + event.text } }
+        buffered.length = 0
+      } else yield { delta: { content: event.text } }
     } else if (event.type === 'tool' && turn.tools.enabled) {
       tools.push(event)
     } else if (event.type === 'usage') {
@@ -37,8 +41,8 @@ async function* updates(turn, events) {
   let finish = 'stop'
   if (turn.tools.enabled) {
     const result = finishTools(buffered.join(''), tools, turn.tools)
-    if (result.text) yield { delta: { content: result.text } }
-    hasText = Boolean(result.text)
+    hasText = /[^\s\p{Cf}\u0000]/u.test(result.text)
+    if (hasText) yield { delta: { content: result.text } }
     if (result.toolCalls.length) {
       const indexed = result.toolCalls.map((call, index) => ({ index, ...call }))
       yield { delta: { tool_calls: indexed } }
@@ -109,6 +113,7 @@ function asStream(iterator, first, base, includeUsage, controller) {
 }
 
 export function createChatFetch({ baseURL, models, session, record, stream = streamQuick, clientOptions = defaultOptions }) {
+  const conversations = new Map()
   return async (url, init) => {
     const request = new Request(url, init)
     let signal = request.signal
@@ -127,8 +132,13 @@ export function createChatFetch({ baseURL, models, session, record, stream = str
       try { account = await session() }
       catch (err) { throw Object.assign(new Error('Account unavailable'), { status: err?.status || 401 }) }
       signal.throwIfAborted()
-      const events = stream(account, { ...turn, clientOptions, onTiming: timing => record(account.accountId, timing) }, signal)
-      const parts = updates(turn, events)
+      const run = input => updates(input, stream(account, {
+        ...input, clientOptions, onTiming: timing => record(account.accountId, timing),
+      }, signal))
+      const key = clientOptions.sessionReuse && conversationKey(request.headers, account, turn)
+      const parts = key
+        ? conversationUpdates(conversations, key, body, turn, clientOptions.sessionTtlMinutes * 60_000, run, signal)
+        : run(turn)
       const base = { id: 'chatcmpl-' + randomUUID(), created: Math.floor(Date.now() / 1000), model: body.model }
       if (!body.stream) return await asJSON(parts, base)
       // Leave handshake and authentication failures as HTTP errors so Magpie can pick another account.

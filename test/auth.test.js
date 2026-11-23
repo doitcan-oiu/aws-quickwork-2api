@@ -90,7 +90,7 @@ for (const [i, provider] of ['social', 'enterprise'].entries()) {
     assert.equal(registrations, provider === 'social' ? 1 : 0)
     assert.equal(createHash('sha256').update(verifier).digest('base64url'), authURL.searchParams.get('code_challenge'))
     assert.deepEqual(sessionFromAuth({ ...signedIn, type: 'oauth' }), {
-      jwt: 'ws-id', wsHost: 'test.plato.ai.aws.dev', wsPath: '', provider, actorArn: 'arn:synthetic',
+      jwt: 'ws-id', tenant, wsHost: 'test.plato.ai.aws.dev', wsPath: '', provider, actorArn: 'arn:synthetic',
       accountId: signedIn.uid, email: signedIn.accountId,
     })
   })
@@ -208,4 +208,21 @@ test('classifies permanent refresh rejection for Magpie and retains an unrotated
   await assert.rejects(refreshAuth(fresh), err => !err.signIn && err.status === 401)
   await assert.rejects(refreshAuth(withoutRefresh), { status: 401, signIn: 'expired' })
   assert.equal(vendor.mock.callCount(), calls)
+})
+
+test('refresh respects the handshake token expiry and reuses only a still-valid ID token', async t => {
+  const jwt = exp => 'header.' + Buffer.from(JSON.stringify({ exp, token_use: 'id' })).toString('base64url') + '.signature'
+  const exp = Math.floor(Date.now() / 1000) + 600
+  const meta = { provider: 'enterprise', tenant: 'https://test.quick.aws.com', tokenEndpoint: 'https://login.microsoftonline.com/t/token',
+    accountId: 'uid', clientId: 'client', refreshToken: 'original' }
+  const auth = { type: 'oauth', access: jwt(exp), expires: exp * 1000, refresh: JSON.stringify(meta) }
+  let tokens = { access_token: 'fresh-access', expires_in: 3600 }
+  t.mock.method(globalThis, 'fetch', async () => Response.json(tokens))
+  const retained = await refreshAuth(auth)
+  assert.equal(retained.access, auth.access)
+  assert.equal(retained.expires, exp * 1000)
+  const fresh = await refreshAuth({ ...auth, access: jwt(exp - 900), expires: (exp - 900) * 1000 })
+  assert.equal(fresh.access, 'fresh-access')
+  tokens = { ...tokens, id_token: jwt(exp + 180) }
+  assert.equal((await refreshAuth(auth)).expires, (exp + 180) * 1000)
 })

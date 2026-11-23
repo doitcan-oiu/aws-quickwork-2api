@@ -69,14 +69,28 @@ export function quickError(message, status = 502) {
   return Object.assign(new Error(message), { status })
 }
 
-export function upstreamFailure(code) {
-  const name = String(code ?? '').toLowerCase()
+export function upstreamFailure(...codes) {
   const statuses = {
     accessdeniedexception: 403, unauthorizedexception: 401, unauthorized: 401,
     notauthorizedexception: 401, expiredtokenexception: 401,
     throttlingexception: 429, throttled: 429, toomanyrequests: 429, toomanyrequestsexception: 429,
+    sessionnotfound: 404, conversationnotfound: 404, threadnotfound: 404,
+    sessionnotfoundexception: 404, conversationnotfoundexception: 404, threadnotfoundexception: 404,
   }
-  const status = /^[45]\d{2}$/.test(name) ? Number(name) : Object.hasOwn(statuses, name) ? statuses[name] : 502
+  const http = codes.find(code => (typeof code === 'string' || typeof code === 'number') && /^[45]\d{2}$/.test(code))
+  const status = http === undefined ? 502 : Number(http)
+  // A generic HTTP 404 by itself does not identify a missing conversation.
+  // Any other explicit HTTP status takes precedence over a secondary error code.
+  if (http !== undefined && status !== 404) return quickError('Amazon Quick reported an upstream error', status)
+  for (const code of codes) {
+    if (typeof code !== 'string' && typeof code !== 'number') continue
+    const name = String(code).split('#').at(-1).toLowerCase().replace(/[_-]/g, '')
+    if (Object.hasOwn(statuses, name)) {
+      const error = quickError('Amazon Quick reported an upstream error', statuses[name])
+      if (statuses[name] === 404) error.sessionMissing = true
+      return error
+    }
+  }
   return quickError('Amazon Quick reported an upstream error', status)
 }
 
@@ -98,12 +112,14 @@ function parseJSON(bytes) {
   }
 }
 
-export function decodeQuickFrame(data, binary, gateway) {
+export function* quickEvents(data, binary, gateway) {
   const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data)
   // Some deployments send a plain JSON WebSocket message.
   // The first byte of a supported AWS prelude is 0 or 1 (16 MiB limit).
-  if (!binary || bytes[0] > 1) return [parseJSON(bytes)]
-  const events = []
+  if (!binary || bytes[0] > 1) {
+    yield parseJSON(bytes)
+    return
+  }
   for (let offset = 0; offset < bytes.length;) {
     if (bytes.length - offset < 16) throw malformed()
     const size = bytes.readUInt32BE(offset)
@@ -114,7 +130,7 @@ export function decodeQuickFrame(data, binary, gateway) {
         crc32(frame.subarray(0, -4)) !== frame.readUInt32BE(size - 4)) throw malformed()
     const headers = stringHeaders(frame.subarray(12, 12 + headerSize))
     if (['error', 'exception'].includes(headers.get(':message-type'))) {
-      throw upstreamFailure(headers.get(':error-code') || headers.get(':exception-type'))
+      throw upstreamFailure(headers.get(':error-code'), headers.get(':exception-type'))
     }
     const body = frame.subarray(12 + headerSize, -4)
     if (gateway) {
@@ -125,13 +141,16 @@ export function decodeQuickFrame(data, binary, gateway) {
       } catch { throw malformed() }
       const payload = envelope?.payload
       if (!(payload instanceof Uint8Array) && typeof payload !== 'string') throw malformed()
-      events.push(parseJSON(Buffer.from(payload)))
+      yield parseJSON(Buffer.from(payload))
     } else {
       const payload = parseJSON(body)?.payload
       if (typeof payload !== 'string') throw malformed()
-      events.push(parseJSON(Buffer.from(payload, 'base64')))
+      yield parseJSON(Buffer.from(payload, 'base64'))
     }
     offset += size
   }
-  return events
+}
+
+export function decodeQuickFrame(data, binary, gateway) {
+  return Array.from(quickEvents(data, binary, gateway))
 }
