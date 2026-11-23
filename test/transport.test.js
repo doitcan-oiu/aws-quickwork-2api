@@ -6,7 +6,7 @@ import { createChatFetch } from '../src/chat.js'
 import { defaultOptions } from '../src/options.js'
 import { decodeQuickFrame, encodeQuickFrame } from '../src/wire.js'
 import { streamQuick } from '../src/transport.js'
-import { relayPrompt } from '../src/messages.js'
+import { prepareTurn, relayPrompt } from '../src/messages.js'
 
 const session = { provider: 'social', jwt: 'test-only', wsHost: 'example.plato.ai.aws.dev', actorArn: 'user' }
 const message = { prompt: 'Say hello', systemPrompt: 'Be concise', model: 'fast' }
@@ -307,6 +307,78 @@ test('oversized AIDP transcript becomes a single attachment and instructions sta
   }, undefined, next.connect)
   await assert.rejects(stream.next(), { status: 413 })
   assert.equal(upload.mock.callCount(), 1)
+})
+
+test('oversized client tool descriptions move to a reference while the task and parameter schemas stay inline', async t => {
+  const tenant = 'https://' + session.wsHost
+  const callerInstruction = 'Use the fixture project for this turn.'
+  const messages = [
+    { role: 'developer', content: callerInstruction },
+    { role: 'user', content: 'Local project context. ' + 'x'.repeat(16000) },
+    { role: 'user', content: 'Create a note in D:\\fixture\\notes. ' + 'y'.repeat(16000) },
+  ]
+  const tools = [['ReadNote', 400], ['WriteNote', 1500]].map(([name, lines]) => ({ type: 'function', function: {
+    name, description: (name + ' reference notes. ').repeat(lines) + 'End of ' + name,
+    parameters: { type: 'object', properties: { path: { type: 'string', description: 'Caller path for ' + name } },
+      required: ['path'], additionalProperties: false }, strict: true,
+  } }))
+  const upload = t.mock.method(globalThis, 'fetch', async () => Response.json({ path: '/workspace/reference.txt' }))
+  for (const toolChoice of ['auto', { type: 'function', function: { name: 'WriteNote' } }]) {
+    const turn = prepareTurn({ messages, tools, tool_choice: toolChoice, parallel_tool_calls: false })
+    const fixture = socketFixture(socket => emit(socket, 'turn_completed'))
+    const before = upload.mock.callCount()
+    await streamQuick({ ...session, tenant }, turn, undefined, fixture.connect).next()
+    assert.equal(upload.mock.callCount(), before + 1)
+    const frame = fixture.sent.find(event => event.type === 'user_message')
+    assert.ok(Buffer.byteLength(JSON.stringify(frame)) <= 63 * 1024)
+    const { text, attachments } = frame.payload
+    assert.equal(attachments.length, 1)
+    assert.match(attachments[0].name, /^tool-reference-.+\.txt$/)
+    assert.ok(text.includes(attachments[0].name))
+    assert.ok(text.includes(callerInstruction))
+    assert.ok(text.includes(turn.transcript))
+    assert.ok(text.includes('<client_tool_call>'))
+    assert.match(text, /at most one function/i)
+    if (toolChoice !== 'auto') assert.match(text, /must call "WriteNote"/i)
+    const [url, init] = upload.mock.calls[before].arguments
+    assert.equal(new URL(url).searchParams.get('name'), attachments[0].name)
+    const reference = Buffer.from(init.body).toString()
+    assert.doesNotMatch(reference, /Local project context|Create a note|fixture project/)
+    const expectedDescriptions = [...turn.tools.allowed.values()].map(({ name, description }) => ({ name, description }))
+    assert.deepEqual(JSON.parse(reference), expectedDescriptions)
+    for (const fn of turn.tools.allowed.values()) {
+      assert.ok(text.includes(JSON.stringify(fn.parameters)))
+      assert.ok(text.includes('"name":"' + fn.name + '"'))
+      assert.ok(text.includes('"strict":true'))
+      assert.ok(!text.includes(fn.description))
+    }
+    if (toolChoice !== 'auto') assert.doesNotMatch(text + reference, /ReadNote/)
+  }
+})
+
+test('client tools keep short turns inline and fall back to the transcript attachment when the task alone is too large', async t => {
+  const tenant = 'https://' + session.wsHost
+  const tools = [{ type: 'function', function: { name: 'WriteNote', description: 'Write in the local project.' } }]
+  const upload = t.mock.method(globalThis, 'fetch', async () => Response.json({ path: '/workspace/input.txt' }))
+  for (const content of ['Create one note.', 'Create one note. ' + 'x'.repeat(70_000)]) {
+    const turn = prepareTurn({ tools, messages: [{ role: 'user', content }] })
+    const fixture = socketFixture(socket => emit(socket, 'turn_completed'))
+    await streamQuick({ ...session, tenant }, turn, undefined, fixture.connect).next()
+    const frame = fixture.sent.find(event => event.type === 'user_message')
+    assert.match(frame.payload.text, /client function for file access, edits or commands/)
+    assert.match(frame.payload.text, /successful tool result/)
+    if (content.length < 100) {
+      assert.equal(upload.mock.callCount(), 0)
+      assert.equal(frame.payload.text, turn.prompt)
+      assert.equal(frame.payload.attachments?.length ?? 0, 0)
+    } else {
+      assert.equal(upload.mock.callCount(), 1)
+      assert.equal(Buffer.from(upload.mock.calls[0].arguments[1].body).toString(), turn.transcript)
+      assert.match(frame.payload.attachments[0].name, /^prompt-.+\.txt$/)
+      assert.ok(frame.payload.text.includes(tools[0].function.description))
+      assert.ok(Buffer.byteLength(JSON.stringify(frame)) <= 63 * 1024)
+    }
+  }
 })
 
 test('a resumed session reports a missing thread only before output and skips session_create', async () => {

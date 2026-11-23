@@ -3,7 +3,7 @@ import { EventEmitter, on } from 'node:events'
 import WebSocket from 'ws'
 import { isQuickHost } from './auth.js'
 import { uploadPromptAttachment } from './attachments.js'
-import { relayPrompt } from './messages.js'
+import { relayPrompt, withToolReference } from './messages.js'
 import { defaultOptions } from './options.js'
 import { quickEvents, encodeQuickFrame, quickError, upstreamFailure } from './wire.js'
 
@@ -79,16 +79,27 @@ async function fitUserMessage(payload, input, session, gateway, signal) {
   if (userMessageFits(payload)) return payload
   const tooLarge = () => Object.assign(quickError('This turn exceeds the Amazon Quick 64 KiB message limit.', 413), { expose: true })
   if (gateway || !session.tenant) throw tooLarge()
+  async function attach(name, text, attachmentText) {
+    // Include the minimum attachment metadata before spending an upload on this layout.
+    const metadata = { type: 'file', name, size: Buffer.byteLength(attachmentText), mimeType: 'text/plain', path: '' }
+    const outgoing = { ...payload, text, attachments: [metadata] }
+    if (!userMessageFits(outgoing)) return null
+    outgoing.attachments = [await uploadPromptAttachment(session, payload.thread_id, name, attachmentText, signal)]
+    return userMessageFits(outgoing) ? outgoing : null
+  }
+  const referenceName = 'tool-reference-' + payload.message_id + '.txt'
+  const reference = withToolReference(input, referenceName)
+  if (reference) {
+    const fitted = await attach(referenceName, reference.text, reference.attachmentText)
+    if (fitted) return fitted
+  }
   const name = 'prompt-' + payload.message_id + '.txt'
-  const attachmentCue = 'Read the full user message for this turn in the attached file ' + name + ' and respond to it.'
+  const attachmentCue = 'Read the conversation for this turn in the attached file ' + name + ' and continue it as the assistant.'
+    + (input.tools?.enabled ? ' The attachment supplies conversation context. Use the listed client functions for actions in the user’s environment.' : '')
   const text = input.transcript === undefined ? attachmentCue : relayPrompt(input.systemPrompt, attachmentCue)
-  const outgoing = { ...payload, text }
-  // Keep the instructions inline; never silently cut the schema or history to fit.
-  if (!userMessageFits(outgoing)) throw tooLarge()
-  const attachment = await uploadPromptAttachment(session, payload.thread_id, name, input.transcript ?? input.prompt, signal)
-  outgoing.attachments = [attachment]
-  if (!userMessageFits(outgoing)) throw tooLarge()
-  return outgoing
+  const fitted = await attach(name, text, input.transcript ?? input.prompt)
+  if (!fitted) throw tooLarge()
+  return fitted
 }
 
 // This timestamp is taken in the socket handler. A slow downstream consumer

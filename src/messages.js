@@ -56,14 +56,17 @@ function toolSettings(body) {
   return { enabled: definitions.size > 0, allowed: definitions, qualifiedNames, parallel: body.parallel_tool_calls !== false, required }
 }
 
-function toolInstructions(tools) {
+function toolInstructions(tools, referenceName) {
+  const definitions = [...tools.allowed.values()]
   const names = [...tools.allowed.keys()]
   return [
-    'The caller can execute the following functions:',
-    JSON.stringify([...tools.allowed.values()]),
+    'The caller can execute the following functions in the user’s environment:',
+    referenceName && 'Use the Quick attachment reader for ' + referenceName + ', which contains the full descriptions and usage requirements of these functions. Their names and parameter schemas are listed here.',
+    JSON.stringify(referenceName ? definitions.map(({ name, parameters, strict }) => ({ name, parameters, strict })) : definitions),
     'These client functions are available through a text bridge. For a native function call, emit one marker per call; the bridge converts it to the caller’s tool_calls field.',
     '<client_tool_call>{"name":' + JSON.stringify(names.length === 1 ? names[0] : 'FUNCTION_NAME') + ',"arguments":{}}</client_tool_call>',
     'When requesting a function, use the actual arguments from the task and follow its parameter schema. Output the marker alone and wait for the caller to return the result.',
+    'When the user asks you to act on their project, use a matching client function for file access, edits or commands. This includes relative paths in the project. Quick’s hosted workspace and qw-file:// download links do not change files on the user’s machine. Report local changes only after the caller returns a successful tool result.',
     tools.required && (names.length === 1 ? 'You must call ' + JSON.stringify(names[0]) + ' this turn.' : 'You must call at least one listed function this turn.'),
     !tools.required && 'If the conversation can be answered without another call, answer normally.',
     !tools.parallel && 'Call at most one function in this turn.',
@@ -96,6 +99,16 @@ function conversationText(history) {
 export function relayPrompt(instructions, transcript) {
   if (!instructions) return transcript
   return '[Instructions from the API caller]\n' + instructions + '\n[End of instructions]\n\n' + transcript
+}
+
+export function withToolReference(input, name) {
+  if (!input.tools?.enabled || typeof input.callerInstructions !== 'string' || input.transcript === undefined) return null
+  const descriptions = [...input.tools.allowed.values()]
+    .filter(tool => tool.description)
+    .map(({ name, description }) => ({ name, description }))
+  if (!descriptions.length) return null
+  const instructions = [input.callerInstructions, toolInstructions(input.tools, name)].filter(Boolean).join('\n\n')
+  return { text: relayPrompt(instructions, input.transcript), attachmentText: JSON.stringify(descriptions) }
 }
 
 export function prepareTurn(body) {
@@ -139,12 +152,12 @@ export function prepareTurn(body) {
     }
   }
   if (!history.length) badRequest('messages contain no user text, assistant text, or tool history.')
-  if (tools.enabled) system.push(toolInstructions(tools))
-  const systemPrompt = system.join('\n\n')
+  const callerInstructions = system.join('\n\n')
+  const systemPrompt = [callerInstructions, tools.enabled && toolInstructions(tools)].filter(Boolean).join('\n\n')
   const transcript = conversationText(history)
   const prompt = relayPrompt(systemPrompt, transcript)
   const title = Array.from(lastUser.trim().replace(/\s+/g, ' ')).slice(0, 64).join('') || 'Magpie'
-  return { prompt, systemPrompt, transcript, model: body.model, title, tools }
+  return { prompt, systemPrompt, callerInstructions, transcript, model: body.model, title, tools }
 }
 
 function asCall(item, tools, requireArguments = false, aliases) {

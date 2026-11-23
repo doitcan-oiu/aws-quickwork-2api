@@ -9,7 +9,7 @@ import { createServer } from "http";
 // package.json
 var package_default = {
   name: "magpie-amazon-quick",
-  version: "1.4.0",
+  version: "1.4.1",
   description: "Amazon Quick subscription provider for Magpie",
   magpie: {
     icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHN0eWxlPnBhdGh7ZmlsbDojMWMxYzFlfUBtZWRpYSAocHJlZmVycy1jb2xvci1zY2hlbWU6ZGFyayl7cGF0aHtmaWxsOiNmMmYyZjJ9fTwvc3R5bGU+PHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMS41IDUuNUMxLjMgNS43IDEuMiA2LjUgMS4yIDYuOUMxLjIgNi45IDEuMiA3IDEuMiA3LjFDMS4xIDcuNCAxLjMgOCAxLjQgOC4zQzEuNCA4LjQgMS41IDguNSAxLjUgOC43QzEuNSA4LjkgMS43IDkgMS44IDkuM0MyLjIgOS45IDIuMiAxMCAyLjMgMTAuMUMyLjQgMTAuMiAyLjUgMTAuMyAyLjYgMTAuNUMyLjggMTAuOCAzIDExLjEgMy4yIDExLjNDMy4zIDExLjMgMy40IDExLjYgMy42IDExLjhDMy44IDEyIDQuMSAxMi40IDQuMiAxMi41QzQuNyAxMyA1LjIgMTMuNyA1LjQgMTMuOUM2IDE0LjUgNi41IDE1LjEgNi43IDE1LjNDNi43IDE1LjQgNi45IDE1LjUgNi45IDE1LjdDNy4zIDE1LjkgNy43IDE2LjUgNy45IDE2LjhDNy45IDE2LjggOCAxNi45IDggMTYuOUM4LjEgMTYuOSA4LjIgMTcuMiA4LjIgMTcuM0M4LjIgMTcuMyA4LjEgMTcuMiA4LjEgMTcuMUM3LjkgMTYuOSA3LjkgMTYuOSA3LjYgMTYuNkM3LjUgMTYuNSA3LjQgMTYuNSA3LjQgMTYuM0M3LjIgMTYuMiA2LjcgMTUuNyA2LjMgMTUuMkM2LjEgMTUuMSA2IDE0LjkgNiAxNC45QzUuOSAxNC44IDUuNyAxNC43IDUuNyAxNC42QzUuNiAxNC41IDUuNCAxNC4zIDUuMyAxNC4yQzUuMSAxNC4xIDQuOSAxMy44IDQuNyAxMy41QzQuNSAxMy4zIDQuMiAxMy4xIDQuMSAxMi45QzQuMSAxMi45IDMuOCAxMi43IDMuOCAxMi41QzMuNSAxMi4zIDMgMTEuOCAyLjggMTEuNEMxLjggMTAuNSAwLjkgOS42IDAuNyA5LjZDMC42IDkuNyAwLjYgOS44IDAuNSAxMEMwLjUgMTAuMSAwLjYgMTAuMiAwLjUgMTAuM0MwLjUgMTAuNCAwLjYgMTAuNSAwLjYgMTAuNkMwLjUgMTAuNyAwLjUgMTAuOSAwLjYgMTFDMC41IDExLjEgMC42IDExLjQgMC42IDExLjVDMC45IDEyLjkgMS4zIDEzLjggMi44IDE0LjlDMi45IDE1LjEgMy4zIDE1LjMgMy40IDE1LjRDMy40IDE1LjUgMy42IDE1LjYgMy43IDE1LjdDNC4yIDE2IDYuNCAxNy44IDcgMTguNEM3LjQgMTguOCA3LjQgMTguOCA3LjUgMTguOUM3LjYgMTkgNy43IDE5IDcuNyAxOS4xQzcuNyAxOS4yIDcuOCAxOS4yIDcuOSAxOS4yQzcuOSAxOS4zIDguMSAxOS40IDguMSAxOS41QzguMiAxOS42IDguMiAxOS43IDguMyAxOS43QzguMyAxOS43IDguMyAxOS43IDguMiAxOS43QzguMiAxOS42IDguMSAxOS42IDggMTkuNkM3LjkgMTkuNSA3LjkgMTkuNCA3LjggMTkuNEM3LjcgMTkuMyA3LjYgMTkuMiA3LjYgMTkuMkM3LjYgMTkuMSA3LjUgMTkgNy4zIDE4LjlDNy4yIDE4LjkgNi45IDE4LjYgNi43IDE4LjRDNi4xIDE3LjggNC41IDE2LjYgMy41IDE2QzMuNCAxNS44IDMgMTUuNiAyLjkgMTUuNUMyLjYgMTUuMyAxLjUgMTQuNiAwLjkgMTQuM0MwLjcgMTQuMSAwLjYgMTQuMSAwLjYgMTQuMkMwLjUgMTQuNSAwLjggMTUuOSAwLjkgMTYuMUMwLjkgMTYuMiAxIDE2LjIgMC45IDE2LjNDMS4yIDE2LjggMS45IDE3LjYgMi43IDE4LjNDMi44IDE4LjUgNCAxOS4yIDQuNyAxOS41QzYuMiAyMC41IDYuNiAyMC43IDcuNCAyMS41QzguMiAyMi4yIDguNyAyMi43IDkuMyAyMy42QzkuNSAyNC4xIDkuOSAyNC40IDEwLjMgMjUuM0MxMC40IDI1LjUgMTAuNSAyNS44IDEwLjUgMjUuOEMxMC43IDI1LjggMTAuOCAyNS43IDExIDI1LjRDMTEuNiAyNSAxMS45IDI0LjYgMTIuMyAyNC4zQzEyLjggMjQgMTMgMjMuOCAxMyAyMy43QzEzLjEgMjMuNyAxMy4xIDIzLjggMTMgMjRDMTIgMjQuOCAxMSAyNiAxMC4yIDI2LjlDMTAuMSAyNy4xIDkuOSAyNy41IDkuNyAyNy43QzkuNSAyNy44IDkuNCAyOCA5LjQgMjhDOS40IDI4IDkuMyAyOC4zIDkuMSAyOC41QzguNiAyOS4yIDcuNyAzMC44IDcuNyAzMC45QzcuNyAzMSA3LjggMzEgOC4zIDMwLjhDOSAzMC40IDkuNSAzMC4yIDEwLjQgMzBDMTEuNyAyOS42IDEyLjUgMjkuNiAxMS42IDMwQzEwLjUgMzAuMiA5LjcgMzAuNiA5LjIgMzEuMkM4LjggMzEuNyA4LjggMzEuNyA5LjMgMzEuN0MxMC4xIDMxLjggMTAuOSAzMS45IDExLjYgMzIuMkMxMi44IDMyLjcgMTMuNSAzMy4xIDE1LjUgMzQuOEMxNi40IDM1LjUgMTcuMyAzNi4yIDE3LjggMzYuNEMxNy45IDM2LjUgMTguMSAzNi43IDE4LjIgMzYuOEMxOS4xIDM3LjMgMjEuMiAzOC4xIDIyLjMgMzguM0MyMi40IDM4LjMgMjIuNyAzOC4zIDIyLjggMzguM0MyMi44IDM4LjUgMjMgMzguNSAyMyAzOC41QzIzLjEgMzguNSAyMy4yIDM4LjUgMjMuMyAzOC41QzIzLjYgMzguNiAyNS45IDM4LjYgMjYuMSAzOC41QzI2LjIgMzguNSAyNi4zIDM4LjUgMjYuNCAzOC41QzI2LjUgMzguNSAyNi42IDM4LjUgMjYuNyAzOC4zQzI2LjcgMzguMyAyNyAzOC4zIDI3LjEgMzguM0MyOC4zIDM4LjEgMzAuMiAzNy4zIDMxLjQgMzYuN0MzMS41IDM2LjcgMzEuNyAzNi40IDMxLjggMzYuNEMzMi4yIDM2LjIgMzMuMiAzNS40IDMzLjQgMzUuMkMzNC4yIDM0LjUgMzUuNSAzMyAzNS44IDMyLjZDMzUuOCAzMi41IDM2IDMyLjIgMzYuMSAzMkMzNi40IDMxLjggMzYuNiAzMS40IDM2LjYgMzEuMkMzNi43IDMxLjEgMzYuOCAzMC45IDM2LjkgMzAuOEMzNy4yIDMwLjQgMzcuNSAyOS42IDM3LjcgMjkuMkMzNy43IDI5LjEgMzcuOCAyOC43IDM3LjkgMjguN0MzOC4xIDI4LjUgMzguNCAyNy4xIDM4LjUgMjYuOEMzOSAyNS4yIDM5LjEgMjMuNyAzOSAyMi40QzM5IDIyLjIgMzguOSAyMS45IDM4LjkgMjEuOEMzOC45IDIxLjcgMzguOSAyMS42IDM4LjkgMjEuNEMzOC42IDIwLjUgMzguNSAxOS45IDM4LjIgMTlDMzcuOSAxOC41IDM3LjUgMTcuNSAzNy4zIDE3LjJDMzcgMTYuOCAzNi44IDE1LjggMzYuOCAxNS4yQzM2LjggMTMuOCAzNy43IDEyLjcgMzkuNiAxMi4yQzQwLjEgMTIuMSA0MS4zIDExLjggNDIuMSAxMS43QzQzLjUgMTEuNSA0My41IDExLjUgNDMuNCAxMS4zQzQyLjkgMTAuNyA0MC45IDkuOSAzOS4yIDkuN0MzNy45IDkuNSAzOC4xIDkuNSAzNy42IDlDMzcgOC42IDM2LjQgOCAzNiA3LjlDMzYgNy44IDM1LjggNy44IDM1LjcgNy43QzM1LjEgNy4zIDM0LjIgNyAzMy4xIDYuOUMzMi42IDYuNyAzMS42IDYuOSAzMSA3QzI5LjYgNy4zIDI4LjMgOCAyNy4zIDkuMkMyNi43IDkuOCAyNi4yIDEwLjggMjUuNyAxMS43QzI1LjUgMTIuMSAyNC44IDEzLjQgMjQuNyAxMy43QzI0LjYgMTMuOSAyNC41IDE0LjEgMjQuMSAxNC43QzIzLjUgMTUuNyAyMi4xIDE2LjkgMjAuNiAxNy44QzIwLjUgMTggMjAuMyAxOC4yIDIwLjEgMTguM0MxOS43IDE4LjUgMTkuNCAxOC44IDE5LjEgMTlDMTguOSAxOS4xIDE4LjcgMTkuMyAxOC41IDE5LjRDMTggMTkuOCAxNy4yIDIwLjMgMTcgMjAuNUMxNi45IDIwLjUgMTYuOCAyMC42IDE2LjcgMjAuN0MxNi4zIDIwLjggMTYuMSAyMC45IDE2IDIwLjlDMTUuNSAyMC44IDE0LjkgMjAuNSAxNC4yIDIwLjJDMTMuNyAxOS44IDEyLjcgMTguOSAxMi40IDE4LjZDMTIuMyAxOC41IDEyLjIgMTguNCAxMi4xIDE4LjJDMTEuOSAxOCAxMS4yIDE3LjEgMTEgMTYuNkMxMC45IDE2LjUgMTAuOCAxNi40IDEwLjcgMTYuM0MxMC43IDE2LjIgMTAuNiAxNi4xIDEwLjYgMTUuOUMxMC41IDE1LjkgMTAuNCAxNS43IDEwLjQgMTUuNkMxMC4zIDE1LjUgMTAuMiAxNS4yIDEwLjEgMTVDMTAgMTQuOCA5LjggMTQuNCA5LjcgMTQuMkM5LjYgMTQgOS41IDEzLjcgOS40IDEzLjZDOS40IDEzLjQgOS4zIDEzLjIgOS4yIDEzQzkuMiAxMi44IDkgMTIuNiA5IDEyLjVDOC45IDEyLjMgOC43IDEyLjEgOC43IDEyQzguNyAxMiA4LjUgMTEuNyA4LjUgMTEuN0M4LjMgMTEuMiA4LjIgMTAuOSA3LjUgMTBDNi40IDguMyA0LjIgNi40IDIuNyA1LjhDMiA1LjUgMS42IDUuNCAxLjUgNS41Wk0yOC40IDE2LjdDMjkuMiAxNi45IDI5LjcgMTcuMiAyOS45IDE3LjdDMzAuMSAxOC4yIDMwIDE4LjkgMjkuNiAxOS40QzI5LjIgMTkuOSAyOC4yIDIwLjkgMjcuNiAyMS4yQzI2LjggMjEuNyAyNS4zIDIyLjQgMjQuMiAyMi43QzIzLjkgMjIuOCAyMy42IDIyLjkgMjMuNSAyMi45QzIyLjggMjMuMiAyMC43IDIzLjcgMTkuNiAyNEMxOSAyNC4yIDE4LjQgMjQuMyAxOC4xIDI0LjRDMTcuOSAyNC40IDE2LjEgMjQuOSAxNS4zIDI1LjFDMTQuNiAyNS4yIDE0LjcgMjUuMSAxNS43IDIzLjZDMTYuNCAyMi43IDE4LjUgMjAuNiAxOS40IDE5LjlDMjAuOCAxOC44IDIxLjQgMTguNCAyMy4yIDE3LjZDMjMuOCAxNy40IDI1LjYgMTYuOCAyNS45IDE2LjhDMjUuOSAxNi44IDI2LjMgMTYuOCAyNi42IDE2LjdDMjYuOCAxNi43IDI4LjIgMTYuNyAyOC40IDE2LjdaTTMwLjQgMjAuMkMzMC41IDIwLjMgMzAuNiAyMC42IDMwLjYgMjAuN0MzMS43IDIzLjEgMzMuNCAyNC42IDM1LjYgMjUuM0MzNi4xIDI1LjUgMzYuNyAyNS43IDM3LjIgMjUuOEMzNy43IDI1LjggMzcuOCAyNS45IDM3LjggMjYuMUMzNy43IDI2LjIgMzcuNyAyNi4zIDM3LjcgMjYuNUMzNy43IDI2LjYgMzcuNyAyNi44IDM3LjYgMjdDMzcuNCAyOC41IDM2LjggMjkuOSAzNi4xIDMxQzM2LjEgMzEuMiAzNS45IDMxLjQgMzUuOSAzMS42QzM1LjcgMzEuOSAzNS4yIDMyLjYgMzQuNyAzMy4zQzMyLjYgMzUuNiAyOS43IDM3LjMgMjYuNiAzNy44QzI2LjUgMzcuOCAyNi4zIDM3LjkgMjYuMiAzNy45QzI1LjggMzcuOSAyMy43IDM3LjkgMjMuMyAzNy45QzIzLjIgMzcuOSAyMyAzNy44IDIyLjkgMzcuOEMyMS4xIDM3LjYgMTkuMyAzNi44IDE4IDM1LjdDMTcuNyAzNS40IDE3IDM0LjcgMTYuOCAzNC41QzE2LjMgMzMuOCAxNi4xIDMzIDE2LjMgMzIuNUMxNi41IDMxLjggMTYuOCAzMS42IDE3LjkgMzEuMUMxOS4xIDMwLjUgMTkuNCAzMC40IDIwLjIgMzBDMjEuNCAyOS40IDIzLjIgMjguNCAyMy45IDI3LjlDMjMuOSAyNy44IDI0LjIgMjcuNyAyNC41IDI3LjZDMjYuMyAyNi4zIDI4IDI0LjYgMjguOSAyMi45QzI5LjUgMjIuMiAyOS43IDIxLjYgMjkuOSAyMC43QzMwLjEgMjAgMzAuMiAxOS45IDMwLjQgMjAuMloiLz48L3N2Zz4K",
@@ -551,14 +551,17 @@ function toolSettings(body) {
     badRequest("parallel_tool_calls must be a boolean.");
   return { enabled: definitions.size > 0, allowed: definitions, qualifiedNames, parallel: body.parallel_tool_calls !== false, required };
 }
-function toolInstructions(tools) {
+function toolInstructions(tools, referenceName) {
+  const definitions = [...tools.allowed.values()];
   const names = [...tools.allowed.keys()];
   return [
-    "The caller can execute the following functions:",
-    JSON.stringify([...tools.allowed.values()]),
+    "The caller can execute the following functions in the user\u2019s environment:",
+    referenceName && "Use the Quick attachment reader for " + referenceName + ", which contains the full descriptions and usage requirements of these functions. Their names and parameter schemas are listed here.",
+    JSON.stringify(referenceName ? definitions.map(({ name, parameters, strict }) => ({ name, parameters, strict })) : definitions),
     "These client functions are available through a text bridge. For a native function call, emit one marker per call; the bridge converts it to the caller\u2019s tool_calls field.",
     '<client_tool_call>{"name":' + JSON.stringify(names.length === 1 ? names[0] : "FUNCTION_NAME") + ',"arguments":{}}</client_tool_call>',
     "When requesting a function, use the actual arguments from the task and follow its parameter schema. Output the marker alone and wait for the caller to return the result.",
+    "When the user asks you to act on their project, use a matching client function for file access, edits or commands. This includes relative paths in the project. Quick\u2019s hosted workspace and qw-file:// download links do not change files on the user\u2019s machine. Report local changes only after the caller returns a successful tool result.",
     tools.required && (names.length === 1 ? "You must call " + JSON.stringify(names[0]) + " this turn." : "You must call at least one listed function this turn."),
     !tools.required && "If the conversation can be answered without another call, answer normally.",
     !tools.parallel && "Call at most one function in this turn."
@@ -598,6 +601,17 @@ function relayPrompt(instructions, transcript) {
 [End of instructions]
 
 ` + transcript;
+}
+function withToolReference(input, name) {
+  if (!input.tools?.enabled || typeof input.callerInstructions !== "string" || input.transcript === undefined)
+    return null;
+  const descriptions = [...input.tools.allowed.values()].filter((tool) => tool.description).map(({ name, description }) => ({ name, description }));
+  if (!descriptions.length)
+    return null;
+  const instructions = [input.callerInstructions, toolInstructions(input.tools, name)].filter(Boolean).join(`
+
+`);
+  return { text: relayPrompt(instructions, input.transcript), attachmentText: JSON.stringify(descriptions) };
 }
 function prepareTurn(body) {
   if (!Array.isArray(body?.messages) || !body.messages.length)
@@ -652,15 +666,16 @@ function prepareTurn(body) {
   }
   if (!history.length)
     badRequest("messages contain no user text, assistant text, or tool history.");
-  if (tools.enabled)
-    system.push(toolInstructions(tools));
-  const systemPrompt = system.join(`
+  const callerInstructions = system.join(`
+
+`);
+  const systemPrompt = [callerInstructions, tools.enabled && toolInstructions(tools)].filter(Boolean).join(`
 
 `);
   const transcript = conversationText(history);
   const prompt = relayPrompt(systemPrompt, transcript);
   const title = Array.from(lastUser.trim().replace(/\s+/g, " ")).slice(0, 64).join("") || "Magpie";
-  return { prompt, systemPrompt, transcript, model: body.model, title, tools };
+  return { prompt, systemPrompt, callerInstructions, transcript, model: body.model, title, tools };
 }
 function asCall(item, tools, requireArguments = false, aliases) {
   const fn = item?.function ?? item;
@@ -3092,17 +3107,28 @@ async function fitUserMessage(payload, input, session, gateway, signal) {
   const tooLarge = () => Object.assign(quickError("This turn exceeds the Amazon Quick 64 KiB message limit.", 413), { expose: true });
   if (gateway || !session.tenant)
     throw tooLarge();
+  async function attach(name, text, attachmentText) {
+    const metadata = { type: "file", name, size: Buffer.byteLength(attachmentText), mimeType: "text/plain", path: "" };
+    const outgoing = { ...payload, text, attachments: [metadata] };
+    if (!userMessageFits(outgoing))
+      return null;
+    outgoing.attachments = [await uploadPromptAttachment(session, payload.thread_id, name, attachmentText, signal)];
+    return userMessageFits(outgoing) ? outgoing : null;
+  }
+  const referenceName = "tool-reference-" + payload.message_id + ".txt";
+  const reference = withToolReference(input, referenceName);
+  if (reference) {
+    const fitted = await attach(referenceName, reference.text, reference.attachmentText);
+    if (fitted)
+      return fitted;
+  }
   const name = "prompt-" + payload.message_id + ".txt";
-  const attachmentCue = "Read the full user message for this turn in the attached file " + name + " and respond to it.";
+  const attachmentCue = "Read the conversation for this turn in the attached file " + name + " and continue it as the assistant." + (input.tools?.enabled ? " The attachment supplies conversation context. Use the listed client functions for actions in the user\u2019s environment." : "");
   const text = input.transcript === undefined ? attachmentCue : relayPrompt(input.systemPrompt, attachmentCue);
-  const outgoing = { ...payload, text };
-  if (!userMessageFits(outgoing))
+  const fitted = await attach(name, text, input.transcript ?? input.prompt);
+  if (!fitted)
     throw tooLarge();
-  const attachment = await uploadPromptAttachment(session, payload.thread_id, name, input.transcript ?? input.prompt, signal);
-  outgoing.attachments = [attachment];
-  if (!userMessageFits(outgoing))
-    throw tooLarge();
-  return outgoing;
+  return fitted;
 }
 function stamp() {
   return { epoch: Date.now(), monotonic: performance.now() };
